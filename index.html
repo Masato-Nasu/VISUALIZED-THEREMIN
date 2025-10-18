@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
 <title>Motion Theremin + Shake Chime + BGM</title>
 <meta name="theme-color" content="#111317">
-<link rel="manifest" href="./manifest.json?v=20251018044607">
+<link rel="manifest" href="./manifest.json?v=20251018044841">
 <style>
   :root {
     --fg: #eaeaea;
@@ -59,8 +59,8 @@
 <div id="topbar">
   <button id="startBtn" class="btn">タップして開始（音を解放）</button>
   <button id="permBtn" class="btn small">センサー許可</button>
-  <button id="uiToggle" class="btn small">UI表示/非表示</button>
-  <span id="permStatus"></span><span id="sensorStatus" style="margin-left:auto;font-size:12px;color:#9aa0a6">SENS:…</span>
+  <button id="uiToggle" class="btn small">UI表示/非表示</button><button id="resetBtn" class="btn small">更新リセット</button>
+  <span id="permStatus"></span><span id="sensorStatus" style="margin-left:auto;font-size:12px;color:#9aa0a6">SENS:…</span><span id="verBadge" style="margin-left:8px;font-size:12px;color:#9aa0a6">v:20251018044841</span>
 </div>
 
 <div id="ui">
@@ -133,6 +133,23 @@
   }
   ['pointerdown','touchstart','mousedown','keydown'].forEach(evt => {
     window.addEventListener(evt, firstGesture, { once:false, passive:true });
+  });
+
+  
+  // ---------- Force Update (SW + Cache reset) ----------
+  const resetBtn = document.getElementById('resetBtn');
+  resetBtn.addEventListener('click', async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+    } catch(e) { console.warn(e); }
+    location.href = location.pathname + '?reset=' + Date.now();
   });
 
   // ---------- Utilities ----------
