@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
-<title>Baby Theremin Shapes — v1.7.8</title>
-<link rel="manifest" href="./manifest.json?v=1.7.8">
+<title>Baby Theremin Shapes — v1.7.9</title>
+<link rel="manifest" href="./manifest.json?v=1.7.9">
 <meta name="theme-color" content="#ffffff">
 <style>
   :root{ --bg:#fafbfe; --panel:#ffffffcc; --text:#10121a; }
@@ -23,7 +23,6 @@
   .range,.select{display:inline-flex;align-items:center;gap:10px;background:#0f1117; color:#E8EAF2; border-radius:14px;padding:10px 12px; box-shadow:0 2px 8px rgba(0,0,0,.2)}
   input[type="range"]{width:160px}
   select{background:transparent;color:#E8EAF2;border:1px solid #222;padding:8px 10px;border-radius:10px}
-  /* hidden but tappable input for iOS */
   .visually-hidden{ position:absolute; left:-9999px; width:1px; height:1px; opacity:0; }
 </style>
 </head>
@@ -64,7 +63,6 @@
 
 <script>
 (function(){
-  // prevent pull-to-refresh on iOS
   document.addEventListener('touchmove', e=>e.preventDefault(), {passive:false});
 
   var app = document.getElementById('app');
@@ -80,7 +78,7 @@
     return cv;
   }
 
-  // ===== Audio (kept from v1.7.7 cute timbre) =====
+  // ===== Audio =====
   var actx=null, analyser=null, thFilter=null, thAmp=null, oscA=null, oscB=null, lfoTrem=null, lfoTremGain=null, lfoVib=null, lfoVibGain=null, envGain=null;
   var audList=[], audIdx=0, audio=new Audio(); audio.preload='auto', audio.crossOrigin='anonymous';
   var bgmBus=null;
@@ -90,7 +88,6 @@
   var presetSel=document.getElementById('preset');
   var dirInput=document.getElementById('audDir');
 
-  // Enable directory selection where available
   try{
     if('webkitdirectory' in dirInput){
       dirInput.setAttribute('webkitdirectory','');
@@ -98,13 +95,12 @@
     }
   }catch(_){}
 
-  // panel toggle (two-finger long press or triple tap)
   var activePointers=new Map(); var holdTimer=null; var taps=0, tapTimer=null;
   function togglePanel(){ controls.classList.toggle('hidden'); }
   function clearPointers(){ activePointers.clear(); if(holdTimer){clearTimeout(holdTimer); holdTimer=null;} }
   function attachPanelGestures(target){
     target.addEventListener('pointerdown',e=>{activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(activePointers.size>=2&&!holdTimer){ holdTimer=setTimeout(togglePanel,1100);}},{passive:false});
-    target.addEventListener('pointermove',e=>{ var p=activePointers.get(e.pointerId); if(!p) return; if(Math.abs(e.clientX+p.y-(p.x+e.clientY))>20) clearPointers(); },{passive:false});
+    target.addEventListener('pointermove',e=>{ var p=activePointers.get(e.pointerId); if(!p) return; if(Math.abs(e.clientX-p.x)>20||Math.abs(e.clientY-p.y)>20) clearPointers(); },{passive:false});
     target.addEventListener('pointerup',()=>clearPointers(),{passive:false});
     target.addEventListener('pointercancel',()=>clearPointers(),{passive:false});
     target.addEventListener('pointerdown', ()=>{ taps++; if(taps===1){ tapTimer=setTimeout(()=>taps=0,1200);} if(taps>=3){ clearTimeout(tapTimer); taps=0; togglePanel(); } });
@@ -143,6 +139,14 @@
     function up(){ if(bgmBus&&actx) bgmBus.gain.setTargetAtTime(parseFloat(bgmUI.value),actx.currentTime,0.05); }
     bgmUI.addEventListener('input', up);
     tvolUI.addEventListener('input', function(){ thAmp && thAmp.gain.setTargetAtTime(parseFloat(tvolUI.value), actx.currentTime, 0.05); });
+
+    // ===== Continuous playback =====
+    audio.addEventListener('ended', function(){
+      if(presetSel.value!=='none') return;
+      if(!audList.length) return;
+      audIdx = (audIdx + 1) % audList.length;
+      playIndex(audIdx);
+    });
   }
 
   function startAll(){
@@ -155,7 +159,7 @@
   startbtn.addEventListener('click', function(e){ e.stopPropagation(); startAll(); });
   document.addEventListener('pointerdown', function one(){ startAll(); document.removeEventListener('pointerdown', one, {capture:false}); }, {capture:false, once:true});
 
-  // ====== Canvas / Visuals & Interaction (from v1.7.7) ======
+  // ====== Canvas & Interaction ======
   var t=0, visScale=1, shapes=[];
   var COLORS=["#60a5fa","#f472b6","#facc15","#a78bfa","#34d399"];
   var TYPES=["circle","triangle","square","star","heart"];
@@ -243,7 +247,6 @@
         var rr=s.r*base*visScale; s.pulse*=0.92;
         ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.rot);
         ctx.lineJoin="round"; ctx.lineCap="round";
-        // Glow style
         ctx.shadowColor=s.color; ctx.shadowBlur=glow*2.2; ctx.strokeStyle=s.color; ctx.lineWidth=lineBase*2.6; drawShape(s.type,rr);
         ctx.shadowBlur=glow*0.8; ctx.strokeStyle=s.color; ctx.lineWidth=lineBase*1.6; drawShape(s.type,rr);
         ctx.shadowBlur=0; ctx.strokeStyle='#ffffff'; ctx.lineWidth=Math.max(1,lineBase*0.7); drawShape(s.type,rr);
@@ -254,7 +257,6 @@
     requestAnimationFrame(draw);
   }
 
-  // Simple pluck
   function doPluck(){ if(!actx) return; var now=actx.currentTime; var o=actx.createOscillator(); o.type='triangle'; var g=actx.createGain(); g.gain.value=0.0; var lpf=actx.createBiquadFilter(); lpf.type='lowpass'; lpf.frequency.value=2400; o.connect(lpf).connect(g).connect(actx.destination); var f=window.pitchHz||440; o.frequency.value=f; g.gain.setValueAtTime(0,now); g.gain.linearRampToValueAtTime(0.9, now+0.01); g.gain.exponentialRampToValueAtTime(0.0001, now+0.28); o.start(now); o.stop(now+0.4); }
   function setPitchFromBeta(beta){ var pmin=120, pmax=900; var n=Math.min(1,Math.max(0,(beta+180)/360)); var curve=Math.sin(n*Math.PI); window.pitchHz = pmin + curve*(pmax-pmin); if(actx&&oscA&&oscB){ var t=actx.currentTime; oscA.frequency.setTargetAtTime(window.pitchHz,t,0.02); oscB.frequency.setTargetAtTime(window.pitchHz,t,0.02); } if(actx&&thFilter){ thFilter.frequency.setTargetAtTime(1400 + curve*1200, actx.currentTime, 0.06); } }
 
@@ -285,14 +287,23 @@
     audList = Array.prototype.slice.call(e.target.files).filter(function(f){return f.type.indexOf('audio/')===0;}).sort(naturalSort);
     audIdx=0; if(audList.length){ presetSel.value='none'; stopPreset(); playIndex(audIdx); }
   });
-  function playIndex(i){ if(!audList.length) return; presetSel.value='none'; stopPreset(); audio.src=URL.createObjectURL(audList[i]); ensureAudio(); try{ if(actx && actx.state!=='running') actx.resume(); audio.play(); }catch(_ ) { } }
+  function playIndex(i){
+    if(!audList.length) return;
+    presetSel.value='none'; stopPreset();
+    audio.src=URL.createObjectURL(audList[i]);
+    ensureAudio();
+    try{
+      if(actx && actx.state!=='running') actx.resume();
+      audio.play();
+    }catch(_){}
+  }
   document.getElementById('next').addEventListener('click',function(){ if(presetSel.value!=='none'){ seqPos=0; return; } if(!audList.length)return; audIdx=(audIdx+1)%audList.length; playIndex(audIdx); });
   document.getElementById('prev').addEventListener('click',function(){ if(presetSel.value!=='none'){ seqPos=0; return; } if(!audList.length)return; audIdx=(audIdx-1+audList.length)%audList.length; playIndex(audIdx); });
   document.getElementById('play').addEventListener('click',function(){ startAll(); if(presetSel.value!=='none'){ if(presetPlaying){ stopPreset(); } else { startPreset(presetSel.value); } return; } if(actx && actx.state!=='running') try{actx.resume();}catch(_ ){} if(audio.paused){ try{audio.play();}catch(_ ){} } else { audio.pause(); } });
 
 })();</script>
 <script>
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.7.8"); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.7.9"); }
 </script>
 </body>
 </html>
