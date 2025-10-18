@@ -53,34 +53,6 @@ Chime.mp3
 
 ---
 
-## 導入方法
-### 最も簡単な方法（ローカル）
-1. 本フォルダ一式を同じ階層に配置して `index.html` を開く  
-   - 既存キャッシュの影響を避けるため、更新時は**ハードリロード**推奨（Windows: `Ctrl+F5` / Mac: `⌘+Shift+R`）
-
-### サーバーに配置
-1. 任意の静的ホスティングへデプロイ（例：NGINX/Apache、GitHub Pages など）
-2. ルート直下にファイル一式を置く（`index.html`, `manifest.json`, `sw.js`, 画像, 音源）
-
----
-
-## キャッシュ（Service Worker）について
-更新後に古い表示が残る場合は、以下をブラウザのコンソールで実行すると確実です。
-```js
-navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister()));
-caches.keys().then(keys=>Promise.all(keys.map(k=>caches.delete(k)))).then(()=>location.reload());
-```
-
----
-
-## 動作環境
-- 最新の Chrome / Edge / Safari / Firefox を推奨
-- **iOS/iPadOS Safari**：
-  - 初回タップで音声が有効化されます（OS の仕様）
-  - フォルダ選択は不可のため**複数ファイル選択**に自動切替
-
----
-
 ## よくある質問（FAQ）
 **Q. 音が鳴らない**  
 A. 初回はユーザー操作（タップ等）が必要です。ページをタップしてからお試しください。
