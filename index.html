@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
 <title>Motion Theremin + Shake Chime + BGM</title>
 <meta name="theme-color" content="#111317">
-<link rel="manifest" href="./manifest.json?v=202510180427">
+<link rel="manifest" href="./manifest.json?v=20251018043543">
 <style>
   :root {
     --fg: #eaeaea;
@@ -14,7 +14,7 @@
     --bg: #111317;
   }
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family: system-ui, -apple-system, "Helvetica Neue", Helvetica, Arial, "Noto Sans JP", sans-serif;}
-  #stage{position:fixed;inset:0;display:block;width:100vw;height:100vh;touch-action:none;}
+  #stage{position:fixed;inset:0;display:block;width:100vw;height:100vh;touch-action:none;pointer-events:none;}
   #ui{
     position: fixed; left: 12px; right: 12px; bottom: 12px;
     display: grid; gap: 8px; grid-template-columns: 1fr; z-index: 10;
@@ -125,6 +125,22 @@
       navigator.serviceWorker.register("./sw.js?ver=" + VERSION).catch(()=>{});
     });
   }
+
+  
+  // ---- First user gesture: unlock audio (iOS/Android) & enable canvas pointer events ----
+  let firstGestureDone = false;
+  function firstGesture() {
+    if (firstGestureDone) return;
+    firstGestureDone = true;
+    try {
+      setupAudio();
+      actx && actx.resume && actx.resume();
+    } catch(e) { /* ignore */ }
+    document.getElementById('stage').style.pointerEvents = 'auto';
+  }
+  ['pointerdown','touchstart','mousedown','keydown'].forEach(evt => {
+    window.addEventListener(evt, firstGesture, { once:false, passive:true });
+  });
 
   // ---------- Utilities ----------
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -253,6 +269,7 @@
   startBtn.addEventListener('click', async ()=>{
     setupAudio();
     await actx.resume();
+    document.getElementById('stage').style.pointerEvents = 'auto';
     hint.hidden = false;
   });
 
@@ -374,7 +391,7 @@
 
     const cx = w/2, cy = h/2;
     const time = performance.now()*0.001;
-    const freq = (window.oscTheremin?.frequency?.value || 220);
+    const freq = (typeof oscTheremin !== "undefined" && oscTheremin && oscTheremin.frequency ? oscTheremin.frequency.value : 220);
     const pulse = 0.6 + 0.4 * Math.sin(time*2 + freq*0.002);
     const rad = Math.min(w,h) * (0.22 + 0.18*pulse + 0.22*amp);
 
