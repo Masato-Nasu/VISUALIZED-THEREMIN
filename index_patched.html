@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<title>Baby Shapes Neon — 全画面再生 (v1.3.3)</title>
+<link rel="manifest" href="./manifest.json?v=1.3.3">
+<meta name="theme-color" content="#1a1a1a">
+<style>
+  :root{ --bg:#1a1a1a; --panel:#20232bcc; --text:#E8EAF2; --muted:#8b90a1; }
+  html,body{ height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Roboto,"Noto Sans JP",sans-serif; overscroll-behavior:none; }
+  #cv{ position:fixed; inset:0; width:100vw; height:100dvh; display:block; touch-action:none; background:var(--bg); }
+  .controls{ position:fixed; left:0; right:0; bottom:0; padding:12px; display:flex; flex-wrap:wrap; gap:10px; justify-content:center; align-items:center;
+    background:var(--panel); backdrop-filter:saturate(1.05) blur(6px); border-top-left-radius:16px; border-top-right-radius:16px;
+    transition:opacity .2s ease, visibility .2s ease, transform .2s ease; transform:translateY(8px); }
+  .hidden{ opacity:0; visibility:hidden; pointer-events:none; transform:translateY(12px); }
+  .btn{appearance:none;border:0;border-radius:14px;background:#2f6feb;color:#fff; padding:12px 16px;font-size:16px;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+  .btn:active{transform:translateY(1px)}
+  .range{display:inline-flex;align-items:center;gap:10px;background:#0f1117; color:#E8EAF2; border-radius:14px;padding:10px 12px; box-shadow:0 2px 8px rgba(0,0,0,.25)}
+  input[type="range"]{width:160px}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div class="controls hidden" id="controls">
+  <label class="btn">🎵 おんがくフォルダ<input id="audDir" type="file" webkitdirectory directory multiple accept="audio/*" hidden></label>
+  <button id="prev" class="btn">← まえ</button>
+  <button id="play" class="btn">▶ / ❚❚</button>
+  <button id="next" class="btn">つぎ →</button>
+  <div class="range">かず <input id="count" type="range" min="3" max="50" step="1" value="22"></div>
+  <div class="range">せんの太さ <input id="thick" type="range" min="2" max="14" step="1" value="6"></div>
+  <div class="range">ひかり <input id="glow" type="range" min="8" max="60" step="1" value="28"></div>
+</div>
+
+<script>
+  // ====== 初期化 ======
+  const panel = document.getElementById('panel');
+  const hint  = document.getElementById('hint');
+  const kbFrame = document.getElementById('kbFrame');
+  const aerialFrame = document.getElementById('aerialFrame');
+
+  function setPanel(show){ panel.style.display = show ? 'block' : 'none'; hint.style.opacity = show ? 0.6 : 0.9; }
+  function togglePanel(){ setPanel(panel.style.display!=='block'); }
+
+  // 起動時に一瞬だけ表示
+  setPanel(true); setTimeout(()=>setPanel(false), 2000);
+
+  // ====== 参照実装ベース：2本指 0.8秒長押し（20px以上動いたらキャンセル） ======
+  // 親ページ全面の透明オーバレイで確実に取る（pinch-zoomを無効化）
+  const overlay = document.createElement('div');
+  Object.assign(overlay.style, {position:'fixed', inset:'0', zIndex:5, background:'transparent', touchAction:'none'});
+  document.body.appendChild(overlay);
+
+  (function twoFingerInit(target, onToggle){
+    const active = new Map(); let holdTimer = null;
+    const cancelHold = ()=>{ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } };
+    target.addEventListener('pointerdown', e=>{
+      active.set(e.pointerId, {x:e.clientX, y:e.clientY});
+      if(active.size>=2 && !holdTimer){ holdTimer=setTimeout(()=>onToggle(), 800); }
+    }, {passive:false});
+    target.addEventListener('pointermove', e=>{
+      const p=active.get(e.pointerId);
+      if(p){
+        if(Math.abs(e.clientX-p.x)>20 || Math.abs(e.clientY-p.y)>20){ cancelHold(); }
+      }
+    }, {passive:false});
+    ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>{
+      target.addEventListener(ev, e=>{ active.delete(e.pointerId); cancelHold(); }, {passive:false});
+    });
+  })(overlay, togglePanel);
+
+  // iframe 側で二本指→親に通知（どこを触っても動くように保険）
+  function injectTwoFinger(frameEl, msgType){
+    frameEl.addEventListener('load', ()=>{
+      try{
+        const d = frameEl.contentDocument;
+        const st = d.createElement('style');
+        st.textContent = 'html,body,*{touch-action:none!important;-ms-touch-action:none!important;}';
+        d.head.appendChild(st);
+        const s = d.createElement('script');
+        s.text = `
+          (function(){
+            const active=new Map(); let holdTimer=null;
+            const cancel=()=>{ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } };
+            document.addEventListener('pointerdown', e=>{
+              active.set(e.pointerId,{x:e.clientX,y:e.clientY});
+              if(active.size>=2 && !holdTimer){ holdTimer=setTimeout(()=>{ try{ parent.postMessage({type:"${msgType}"}, "*"); }catch{} }, 800); }
+            }, {capture:true, passive:false});
+            document.addEventListener('pointermove', e=>{
+              const p=active.get(e.pointerId);
+              if(p && (Math.abs(e.clientX-p.x)>20 || Math.abs(e.clientY-p.y)>20)){ cancel(); }
+            }, {capture:true, passive:false});
+            ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>{
+              document.addEventListener(ev, e=>{ active.delete(e.pointerId); cancel(); }, {capture:true, passive:false});
+            });
+          })();
+        `;
+        d.head.appendChild(s);
+      }catch(_){}
+    });
+  }
+  injectTwoFinger(document.getElementById('kbFrame'), 'KB_TWO_FINGER');
+  injectTwoFinger(document.getElementById('aerialFrame'), 'AERIAL_TWO_FINGER');
+
+  // 子からの通知でトグル
+  window.addEventListener('message', (e)=>{
+    if(e?.data?.type==='KB_TWO_FINGER' || e?.data?.type==='AERIAL_TWO_FINGER'){ togglePanel(); }
+  });
+
+  // ====== 高い音ほど“ただ大きく” —— ガクガク殺し ======
+  // AERIAL 側から送られるピッチ(Hz)を使う。揺れを抑える一方向優先スムージング。
+  const FMIN=120, FMAX=1800;              // ピッチ範囲（必要なら調整）
+  const ATTACK=0.75, RELEASE=0.18;        // 立ち上がり速く／減衰ゆっくり
+  const STEP_UP_MAX=0.10, STEP_DOWN_MAX=0.02;
+  const DOWN_DEAD_BAND=0.03;              // 小さい下降は無視
+  const SCALE_GAIN=0.28;                   // どれだけ大きくするか
+  const MEDIAN_SIZE=5;                     // メディアン窓
+
+  kbFrame.style.transition='none';
+  kbFrame.style.transformOrigin='50% 50%';
+
+  function hzToNorm(hz){
+    const c = Math.max(FMIN, Math.min(FMAX, hz||FMIN));
+    return (Math.log(c)-Math.log(FMIN))/(Math.log(FMAX)-Math.log(FMIN)); // 0..1
+  }
+
+  let env=0, prevTarget=0, medBuf=[];
+  function applyPitch(hz){
+    // 0..1 正規化（対数）
+    let n = hzToNorm(hz);
+    // メディアンでスパイク除去
+    medBuf.push(n); if(medBuf.length>MEDIAN_SIZE) medBuf.shift();
+    const mid = [...medBuf].sort((a,b)=>a-b)[Math.floor(medBuf.length/2)];
+    // Δ制限（上昇は広く／下降は狭く）
+    const up  = Math.min(mid - prevTarget,  STEP_UP_MAX);
+    const down= Math.max(mid - prevTarget, -STEP_DOWN_MAX);
+    let target = (mid >= prevTarget) ? (prevTarget + up) : (prevTarget + down);
+    // デッドバンド：小さな下降は無視 ⇒ 見た目は“ただ大きく”
+    if(target < env && (env - target) < DOWN_DEAD_BAND){ target = env; }
+    // エンベロープ
+    const coeff = (target >= env) ? ATTACK : RELEASE;
+    env = env + (target - env) * coeff;
+    prevTarget = target;
+    // スケール適用（回転・トランジションなし）
+    const scale = 1 + SCALE_GAIN * env;
+    kbFrame.style.transform = `scale(${scale})`;
+  }
+
+  window.addEventListener('message', (e)=>{
+    if(e?.data?.type==='AERIAL_PITCH_HZ' && typeof e.data.hz==='number' && e.data.hz>0){
+      applyPitch(e.data.hz);
+    }
+  });
+
+  // ====== 予備操作（Sキー／ボタン） ======
+  document.addEventListener('keydown', (e)=>{ if(e.key==='s'||e.key==='S'){ togglePanel(); } });
+  const gear=document.createElement('button');
+  gear.textContent='⚙';
+  Object.assign(gear.style,{position:'fixed',left:'6px',top:'6px',width:'26px',height:'26px',borderRadius:'6px',border:'1px solid #2a2a33',background:'#111114cc',color:'#cfd3ff',font:'600 13px ui-sans-serif',zIndex:40,opacity:.55});
+  gear.addEventListener('click', ()=>setPanel(true));
+  document.body.appendChild(gear);
+
+  // ====== パネルのドラッグ移動 ======
+  (function(){
+    const drag=document.getElementById('drag');
+    if(!drag) return;
+    let sx=0, sy=0, ox=0, oy=0, on=false;
+    drag.addEventListener('pointerdown', (e)=>{ on=true; drag.setPointerCapture(e.pointerId);
+      const r=panel.getBoundingClientRect(); ox=r.left; oy=r.top; sx=e.clientX; sy=e.clientY; document.body.style.cursor='grabbing';
+    });
+    drag.addEventListener('pointermove', (e)=>{ if(!on) return;
+      const dx=e.clientX-sx, dy=e.clientY-sy;
+      panel.style.left=Math.max(8, Math.min(innerWidth-panel.offsetWidth-8, ox+dx))+'px';
+      panel.style.top =Math.max(8, Math.min(innerHeight-panel.offsetHeight-8, oy+dy))+'px';
+      panel.style.right='auto'; panel.style.bottom='auto';
+    });
+    const end=()=>{ on=false; document.body.style.cursor=''; };
+    drag.addEventListener('pointerup', end); drag.addEventListener('pointercancel', end);
+  })();
+</script></body>
+</html>

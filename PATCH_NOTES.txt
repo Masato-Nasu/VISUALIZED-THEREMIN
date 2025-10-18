@@ -1,0 +1,8 @@
+KB×AERIAL 親側パッチ（二本指 & ピッチ→拡大 スムーズ化）
+
+1) この ZIP の中の index_patched.html を、あなたの公開フォルダに置いてください。
+   - 既存 index.html を残したい場合は、index_patched.html を試して OK なら index.html にリネーム。
+2) PWA を使っている場合は、ハードリロード or サイトデータ削除を一度行ってください。
+3) 係数の調整は index_patched.html 内の以下を変更：
+   - FMIN/FMAX, ATTACK/RELEASE, STEP_UP_MAX/STEP_DOWN_MAX, DOWN_DEAD_BAND, SCALE_GAIN, MEDIAN_SIZE
+4) 二本指は 0.8 秒長押し、20px 以上動くとキャンセル。親・子（KB/AERIAL）どちらでも検出します。
