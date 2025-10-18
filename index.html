@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
-<title>Baby Theremin Shapes — v1.7.5</title>
-<link rel="manifest" href="./manifest.json?v=1.7.5">
+<title>Baby Theremin Shapes — v1.7.6</title>
+<link rel="manifest" href="./manifest.json?v=1.7.6">
 <meta name="theme-color" content="#ffffff">
 <style>
   :root{ --bg:#fafbfe; --panel:#ffffffcc; --text:#10121a; }
-  html,body{ height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Roboto,"Noto Sans JP",sans-serif; }
+  html,body{ height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Roboto,"Noto Sans JP",sans-serif; overscroll-behavior: none; position:fixed; width:100%; }
   #app{ position:fixed; inset:0; }
   .starter{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:linear-gradient(180deg,#ffffff,#f0f4ff);}
   .starter .card{background:#fff;border:1px solid #e5e7eb;border-radius:16px; padding:22px 18px; box-shadow:0 10px 30px rgba(0,0,0,.08); text-align:center; color:#111; max-width:90vw}
@@ -55,15 +55,19 @@
   <button id="play" class="btn">▶ / ❚❚</button>
   <button id="next" class="btn">つぎ →</button>
   <div class="range">BGM音量 <input id="bgm" type="range" min="0" max="1" step="0.01" value="0.7"></div>
-  <div class="range">テルミン音量 <input id="tvol" type="range" min="0" max="1" step="0.01" value="0.25"></div>
+  <div class="range">テルミン音量 <input id="tvol" type="range" min="0" max="1" step="0.01" value="0.4"></div>
   <div class="range">かず <input id="count" type="range" min="5" max="60" step="1" value="26"></div>
   <div class="range">せんの太さ <input id="thick" type="range" min="2" max="16" step="1" value="7"></div>
-  <div class="range">ひかり <input id="glow" type="range" min="10" max="70" step="1" value="40"></div>
-  <div class="range">ビート反応<input id="beatAmt" type="range" min="0" max="0.5" step="0.01" value="0.22"></div>
+  <div class="range">ひかり <input id="glow" type="range" min="10" max="70" step="1" value="44"></div>
+  <div class="range">ビート反応<input id="beatAmt" type="range" min="0" max="0.5" step="0.01" value="0.18"></div>
 </div>
 
 <script>
 (function(){
+  // prevent pull-to-refresh / rubberband
+  document.addEventListener('touchmove', function(e){ e.preventDefault(); }, {passive:false});
+  document.addEventListener('gesturestart', function(e){ e.preventDefault(); }, {passive:false});
+
   var app = document.getElementById('app');
   var starter = document.getElementById('starter');
   var startbtn = document.getElementById('startbtn');
@@ -160,9 +164,9 @@
   startbtn.addEventListener('click', function(e){ e.stopPropagation(); startAll(); });
   document.addEventListener('pointerdown', function one(){ startAll(); document.removeEventListener('pointerdown', one, {capture:false}); }, {capture:false, once:true});
 
-  // ====== Canvas / Visuals ======
+  // ====== Canvas / Visuals & Interaction ======
   var t=0, visScale=1, shapes=[];
-  var COLORS=["#60a5fa","#f472b6","#facc15","#a78bfa","#34d399"]; // blue/pink/yellow/purple/green
+  var COLORS=["#60a5fa","#f472b6","#facc15","#a78bfa","#34d399"];
   var TYPES=["circle","triangle","square","star","heart"];
   window.pitchHz=440;
 
@@ -182,15 +186,44 @@
     addEventListener('orientationchange',fitEnsure,{passive:true});
     if(window.visualViewport){ visualViewport.addEventListener('resize',fitEnsure,{passive:true}); }
 
-    // gestures for sound / burst
-    var pressStart=0, dragging=false; var lastPos={x:null,y:null}; var chime=new Audio("./Chime.mp3"); chime.volume=0.3;
+    // gestures for sound / burst with sustain
+    var pressStart=0, dragging=false, thereminOn=false, holdId=null;
+    var lastPos={x:null,y:null};
+    var chime=new Audio("./Chime.mp3"); chime.volume=0.3;
+
     function getCanvasPos(e){ var r=cv.getBoundingClientRect(); var x=(e.clientX-r.left)/r.width*cv.width; var y=(e.clientY-r.top)/r.height*cv.height; if(isFinite(x)&&isFinite(y)) return {x:x,y:y}; return null; }
     function updateLastPos(e){ var p=getCanvasPos(e); if(p) lastPos=p; }
 
-    cv.addEventListener('pointerdown', function(e){ pressStart=Date.now(); dragging=true; updateLastPos(e); });
-    cv.addEventListener('pointermove', function(e){ if(!dragging) return; updateLastPos(e); if(Date.now()-pressStart>180){ onThereminDrag(e); gateOn(); } });
-    window.addEventListener('pointerup', function(e){ if(!dragging) return; dragging=false; var dur=Date.now()-pressStart; if(dur<=180){ doPluck(); try{ chime.currentTime=0; chime.play(); }catch(_ ){} doBurst(e); } else { gateOff(); } });
-    cv.addEventListener('pointercancel', function(){ dragging=false; gateOff(); });
+    function startTheremin(){ thereminOn=true; gateOn(); }
+    function stopTheremin(){ thereminOn=false; gateOff(); if(holdId){ clearTimeout(holdId); holdId=null; } }
+
+    cv.addEventListener('pointerdown', function(e){
+      pressStart=Date.now(); dragging=true; updateLastPos(e);
+      if(holdId) clearTimeout(holdId);
+      holdId = setTimeout(function(){ startTheremin(); }, 160); // 160ms後にテルミン開始（持続）
+    });
+
+    cv.addEventListener('pointermove', function(e){
+      if(!dragging) return;
+      updateLastPos(e);
+      if(thereminOn){ onThereminDrag(e); }
+    });
+
+    window.addEventListener('pointerup', function(e){
+      if(!dragging) return;
+      dragging=false;
+      var dur=Date.now()-pressStart;
+      if(thereminOn){
+        stopTheremin(); // 指を離したら停止
+      }else{
+        // 短タップ：プラック＋バースト
+        doPluck();
+        try{ chime.currentTime=0; chime.play(); }catch(_){}
+        doBurst(e);
+      }
+    });
+
+    cv.addEventListener('pointercancel', function(){ dragging=false; stopTheremin(); });
 
     function onThereminDrag(e){ var p=getCanvasPos(e); if(!p) return; var beta=(p.y/cv.height - 0.5)*360; setPitchFromBeta(beta); }
 
@@ -221,7 +254,7 @@
         var rr=s.r*base*visScale; s.pulse*=0.92;
         ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.rot);
         ctx.lineJoin="round"; ctx.lineCap="round";
-        // Glow look: colored outer stroke + white core, no black lines
+        // Glow style
         ctx.shadowColor=s.color; ctx.shadowBlur=glow*2.2; ctx.strokeStyle=s.color; ctx.lineWidth=lineBase*2.6; drawShape(s.type,rr);
         ctx.shadowBlur=glow*0.8; ctx.strokeStyle=s.color; ctx.lineWidth=lineBase*1.6; drawShape(s.type,rr);
         ctx.shadowBlur=0; ctx.strokeStyle='#ffffff'; ctx.lineWidth=Math.max(1,lineBase*0.7); drawShape(s.type,rr);
@@ -234,7 +267,7 @@
 
   // Simple synth helpers
   function doPluck(){ if(!actx) return; var now=actx.currentTime; var o=actx.createOscillator(); o.type='triangle'; var g=actx.createGain(); g.gain.value=0.0; var lpf=actx.createBiquadFilter(); lpf.type='lowpass'; lpf.frequency.value=2400; o.connect(lpf).connect(g).connect(actx.destination); var f=window.pitchHz||440; o.frequency.value=f; g.gain.setValueAtTime(0,now); g.gain.linearRampToValueAtTime(0.9, now+0.01); g.gain.exponentialRampToValueAtTime(0.0001, now+0.35); o.start(now); o.stop(now+0.5); }
-  function gateOn(){ if(!envGain||!actx) return; var t=actx.currentTime; envGain.gain.cancelScheduledValues(t); envGain.gain.setTargetAtTime(1.0,t,0.06); }
+  function gateOn(){ if(!envGain||!actx) return; var t=actx.currentTime; envGain.gain.cancelScheduledValues(t); envGain.gain.setTargetAtTime(1.0,t,0.01); }
   function gateOff(){ if(!envGain||!actx) return; var t=actx.currentTime; envGain.gain.cancelScheduledValues(t); envGain.gain.setTargetAtTime(0.0,t,0.12); }
   function setPitchFromBeta(beta){ var pmin=120, pmax=900; var n=Math.min(1,Math.max(0,(beta+180)/360)); var curve=Math.sin(n*Math.PI); window.pitchHz = pmin + curve*(pmax-pmin); if(actx&&oscA&&oscB){ var t=actx.currentTime; oscA.frequency.setTargetAtTime(window.pitchHz,t,0.02); oscB.frequency.setTargetAtTime(window.pitchHz,t,0.02); } if(actx&&thFilter){ thFilter.frequency.setTargetAtTime(1400 + curve*1200, actx.currentTime, 0.06); } }
 
@@ -268,7 +301,7 @@
 
 })();</script>
 <script>
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.7.5"); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.7.6"); }
 </script>
 </body>
 </html>
