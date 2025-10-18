@@ -5,8 +5,9 @@
 **PWA 対応**（ホーム画面に追加可）、**オフライン動作**（Service Worker）に対応しています。
 
 ---
-
-
+## 実行リンク
+ここに飛んで実行してね → https://masato-nasu.github.io/VISUALIZED-THEREMIN/
+（GitHub Pages 上でブラウザからそのまま動作します）
 
 ---
 
