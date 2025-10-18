@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
 <title>Motion Theremin + Shake Chime + BGM</title>
 <meta name="theme-color" content="#111317">
-<link rel="manifest" href="./manifest.json?v=20251018045133">
+<link rel="manifest" href="./manifest.json?v=20251018045708">
 <style>
   :root {
     --fg: #eaeaea;
@@ -95,7 +95,7 @@
   <div class="card" id="debugCard" style="display:grid;gap:6px">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button id="reperm" class="btn small">センサー再許可</button>
-      <label style="display:flex;gap:6px;align-items:center"><input id="forceAccel" type="checkbox"> フォールバック固定</label>
+      <label style="display:flex;gap:6px;align-items:center"><input id="forceAccel" type="checkbox"> フォールバック固定</label><label style="display:flex;gap:6px;align-items:center"><input id="mouseMode" type="checkbox"> マウス操作</label>
       <span id="secureWarn" style="font-size:12px;color:#ff8a80"></span>
     </div>
     <div style="font-size:12px;color:#9aa0a6">
@@ -301,6 +301,49 @@
   // ---------- Sensor Watchdog & Fallback ----------
 
   // ---------- Secure Context & Debug ----------
+
+  // ---------- Mouse/Trackpad Fallback on Canvas ----------
+  const mouseModeEl = document.getElementById('mouseMode');
+  const canvasEl = document.getElementById('stage');
+  let mouseMode = false;
+  let dragging = false;
+
+  function setMouseMode(on){ mouseMode = !!on; mouseModeEl.checked = mouseMode; sensorStatus.textContent = mouseMode ? 'SENS:MOUSE' : sensorStatus.textContent; }
+  mouseModeEl.addEventListener('change', e => setMouseMode(e.target.checked));
+
+  // Auto-enable mouse if no sensor events for a while (desktop Chrome等)
+  setTimeout(() => {
+    if (sensorStatus.textContent === 'SENS:—' || (oriCnt === 0 && motCnt === 0)) {
+      setMouseMode(true);
+    }
+  }, 1500);
+
+  function canvasToAngles(px, py){
+    const rect = canvasEl.getBoundingClientRect();
+    const x = (px - rect.left) / rect.width;   // 0..1
+    const y = (py - rect.top)  / rect.height;  // 0..1
+    // Map x -> gamma (-90..90), y -> beta (-180..180)  (top= -180, bottom= +180)
+    const gamma = (x - 0.5) * 180;   // -90..90
+    const beta  = (y - 0.5) * 360;   // -180..180
+    return {beta, gamma};
+  }
+
+  function handlePointer(e){
+    if(!mouseMode) return;
+    if (!actx) { try { setupAudio(); actx && actx.resume && actx.resume(); } catch(e){} }
+    const p = (e.touches && e.touches[0]) ? e.touches[0] : e;
+    const {beta, gamma} = canvasToAngles(p.clientX, p.clientY);
+    applyThereminFromAngles(beta, gamma);
+  }
+
+  canvasEl.addEventListener('pointerdown', (e)=>{ dragging = true; handlePointer(e); });
+  canvasEl.addEventListener('pointermove', (e)=>{ if(dragging) handlePointer(e); });
+  window.addEventListener('pointerup', ()=> dragging = false);
+  // Touch support
+  canvasEl.addEventListener('touchstart', (e)=>{ dragging = true; handlePointer(e); }, {passive:true});
+  canvasEl.addEventListener('touchmove',  (e)=>{ if(dragging) handlePointer(e); }, {passive:true});
+  window.addEventListener('touchend', ()=> dragging = false);
+
   const reperm = document.getElementById('reperm');
   const forceAccel = document.getElementById('forceAccel');
   const oriCntEl = document.getElementById('oriCnt');
