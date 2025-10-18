@@ -2,7 +2,7 @@
   "name": "Motion Theremin + Shake Chime + BGM",
   "short_name": "Theremin",
   "description": "端末の傾きでテルミンを操作し、振るとチャイム、任意のBGM再生、音連動ビジュアル。",
-  "start_url": "./index.html?v=20251018043920",
+  "start_url": "./index.html?v=20251018044151",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
@@ -10,13 +10,13 @@
   "theme_color": "#111317",
   "icons": [
     {
-      "src": "./icon-192.png?v=20251018043920",
+      "src": "./icon-192.png?v=20251018044151",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "./icon-512.png?v=20251018043920",
+      "src": "./icon-512.png?v=20251018044151",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
