@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
 <title>Motion Theremin + Shake Chime + BGM</title>
 <meta name="theme-color" content="#111317">
-<link rel="manifest" href="./manifest.json?v=20251018050220">
+<link rel="manifest" href="./manifest.json?v=20251018050554">
 <style>
   :root {
     --fg: #eaeaea;
@@ -184,6 +184,26 @@
 
   
   // ---------- Audio State Helpers ----------
+
+  // ---------- Audio Unlock Helper ----------
+  const audioUnlockBtn = document.getElementById('audioUnlock');
+  function reflectAudioUI(){
+    updateAudioState && updateAudioState();
+    if (actx && actx.state !== 'running') { audioUnlockBtn.style.display = 'inline-block'; }
+    else { audioUnlockBtn.style.display = 'none'; }
+  }
+  async function hardResume(){
+    try {
+      if (!actx) { setupAudio(); }
+      if (actx.state !== 'running') await actx.resume();
+    } catch(e){ console.warn(e); }
+    reflectAudioUI();
+  }
+  audioUnlockBtn.addEventListener('click', hardResume);
+  ['pointerdown','touchstart','keydown','mousedown'].forEach(evt => window.addEventListener(evt, hardResume, {passive:true}));
+  document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState==='visible') hardResume(); });
+  setInterval(reflectAudioUI, 500);
+
   const audioState = document.getElementById('audioState');
   const audioResumeBtn = document.getElementById('audioResume');
   const testBeepBtn = document.getElementById('testBeep');
@@ -268,6 +288,30 @@
   });
 
   // Update readouts every frame (patched inside render)
+
+  
+  // ---------- Force AudioContext Init at Load ----------
+  (function initAudioEarly(){
+    try {
+      if (!actx) {
+        actx = new (window.AudioContext || window.webkitAudioContext)();
+        // build minimal graph so state is meaningful
+        master = actx.createGain();
+        analyser = actx.createAnalyser();
+        master.connect(actx.destination);
+        analyser.connect(master);
+        // theremin nodes
+        gainTheremin = actx.createGain();
+        gainTheremin.gain.value = Math.max(0.05, Number(document.getElementById('volTheremin').value || 0.6));
+        oscTheremin = actx.createOscillator();
+        oscTheremin.type = 'sine';
+        oscTheremin.frequency.value = 220;
+        oscTheremin.connect(gainTheremin).connect(master);
+        // chime/bgm will be wired later by existing setupAudio()
+        try { oscTheremin.start(); } catch(e) {}
+      }
+    } catch(e) { console.warn('Audio init failed', e); }
+  })();
 
   // ---------- Utilities ----------
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -630,5 +674,8 @@
   canvasEl.addEventListener('pointerdown', ()=>{ triggerChime(); }, {passive:true});
 })();
 </script>
+
+<button id="audioUnlock" class="btn" style="position:fixed;right:12px;bottom:64px;z-index:20;display:none">音を解放</button>
+
 </body>
 </html>
