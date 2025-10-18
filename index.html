@@ -19,17 +19,16 @@
   </style>
 </head>
 <body>
-  <iframe id="kbFrame" allow="fullscreen" src="./kb_patched.html?v=15" allow="autoplay; fullscreen"></iframe>
+  <iframe id="kbFrame" allow="fullscreen" src="./kb_patched.html?v=16" allow="autoplay; fullscreen"></iframe>
   <div id="panel">
     <div id="drag">AERIAL 操作パネル（二本指/長押しで表示切替・ドラッグで移動・Sキーでも可）</div>
-    <iframe id="aerialFrame" allow="autoplay; microphone; fullscreen" src="./aerial/index.html?v=15" allow="autoplay; microphone; fullscreen; clipboard-read; clipboard-write"></iframe>
+    <iframe id="aerialFrame" allow="autoplay; microphone; fullscreen" src="./aerial/index.html?v=16" allow="autoplay; microphone; fullscreen; clipboard-read; clipboard-write"></iframe>
   </div>
   <div id="hint">✌ 二本指タッチ／長押し（0.8秒）／Sキー でパネル表示</div>
 
   <script>
 
     if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js"); }
-
     const panel = document.getElementById('panel');
     const hint = document.getElementById('hint');
     const kbFrame = document.getElementById('kbFrame');
@@ -38,47 +37,64 @@
     function setPanel(show){ panel.style.display = show ? "block" : "none"; hint.style.opacity = show ? 0.6 : 0.9; }
     function toggle(force){ if(typeof force==="boolean"){ setPanel(force); } else { setPanel(panel.style.display!=="block"); } }
 
-    // Show briefly on load
-    (function(){ setPanel(true); setTimeout(()=>setPanel(false), 2400); })();
+    // Brief show then hide
+    (function(){ setPanel(true); setTimeout(()=>setPanel(false), 2200); })();
 
-    // Parent-level long-press & S
+    // ---- Primary: Two-finger (parent) ----
+    let lastTF=0;
+    function parentTwoFinger(e){
+      const now=performance.now();
+      if(e.touches && e.touches.length>=2 && now-lastTF>350){
+        lastTF=now; toggle();
+        e.preventDefault(); // allow preventing when 2+
+      }
+    }
+    document.addEventListener('touchstart', parentTwoFinger, {passive:false, capture:true});
+
+    // Aux toggles (fallback)
     (function(){
       let t=null;
       document.addEventListener('touchstart', e=>{ if(e.touches?.length===1){ t=setTimeout(()=>toggle(), 800); } }, {passive:true});
       const cancel=()=>{ if(t){ clearTimeout(t); t=null; } };
-      document.addEventListener('touchend', cancel);
-      document.addEventListener('touchmove', cancel);
+      document.addEventListener('touchend', cancel); document.addEventListener('touchmove', cancel);
     })();
     document.addEventListener('keydown', e=>{ if(e.key==='s'||e.key==='S'){ toggle(); } });
 
-    // Visible toggles
+    // Visible helpers (残すが二本指が主役)
     (function(){
       const gear=document.createElement('button');
-      gear.textContent="⚙"; Object.assign(gear.style,{position:"fixed",left:"6px",top:"6px",width:"24px",height:"24px",borderRadius:"6px",border:"1px solid #2a2a33",background:"#111114cc",color:"#cfd3ff",font:"600 12px ui-sans-serif",zIndex:30,opacity:.6});
+      gear.textContent="⚙"; Object.assign(gear.style,{position:"fixed",left:"6px",top:"6px",width:"24px",height:"24px",borderRadius:"6px",border:"1px solid #2a2a33",background:"#111114cc",color:"#cfd3ff",font:"600 12px ui-sans-serif",zIndex:30,opacity:.55});
       gear.addEventListener('click', ()=>toggle(true)); document.body.appendChild(gear);
-      const br=document.createElement('div');
-      Object.assign(br.style,{position:"fixed",right:"8px",bottom:"8px",width:"48px",height:"48px",zIndex:29,background:"transparent"});
-      let lastTap=0; br.addEventListener('touchstart', e=>{ const now=performance.now(); if(now-lastTap<350){ toggle(true); } lastTap=now; }, {passive:true});
-      document.body.appendChild(br);
     })();
 
-    // Envelope scaling using ONLY true level from AERIAL
-    let env=0; const ATTACK=0.8, RELEASE=0.25;
+    // ---- Pitch-based scaling ----
+    // Receive true pitch from AERIAL
+    let envPitch=0; // smoothed 0..1 (log-mapped)
+    const ATTACK=0.7, RELEASE=0.25;
+    const FMIN=120, FMAX=1800;
+    function hzToNorm(hz){
+      const clamped=Math.max(FMIN, Math.min(FMAX, hz||FMIN));
+      const n=(Math.log(clamped)-Math.log(FMIN))/(Math.log(FMAX)-Math.log(FMIN)); // 0..1
+      return n;
+    }
     kbFrame.style.transition="none"; kbFrame.style.transformOrigin="50% 50%";
     window.addEventListener("message", (e)=>{
-      if(e?.data?.type==="AERIAL_LEVEL_TRUE" && typeof e.data.vol==="number"){
-        const target = Math.max(0, Math.min(1, e.data.vol));
-        const coeff = (target>=env) ? ATTACK : RELEASE;
-        env = env + (target - env) * coeff;
-        const scale = 1 + 0.24*env;
+      // pitch
+      if(e?.data?.type==="AERIAL_PITCH_HZ" && typeof e.data.hz==="number" && e.data.hz>0){
+        const target = hzToNorm(e.data.hz);
+        const coeff = (target>=envPitch)? ATTACK : RELEASE;
+        envPitch = envPitch + (target - envPitch) * coeff;
+        const scale = 1 + 0.28*envPitch; // HIGH pitch -> bigger
         kbFrame.style.transform = `scale(${scale})`;
       }
-      // Two-finger relays from iframes
-      if(e?.data?.type==="KB_TWO_FINGER"){ toggle(); }
-      if(e?.data?.type==="AERIAL_TWO_FINGER"){ toggle(); }
+      // still accept true level for possible future uses (ignored for scale)
+      if(e?.data?.type==="AERIAL_LEVEL_TRUE" && typeof e.data.vol==="number"){ /* no-op for size */ }
+
+      // Two-finger relays
+      if(e?.data?.type==="KB_TWO_FINGER" || e?.data?.type==="AERIAL_TWO_FINGER"){ toggle(); }
     });
 
-    // Inject bridge into AERIAL at runtime (true level via analyser tee)
+    // ---- Inject bridges into AERIAL & KB ----
     aerialFrame.addEventListener("load", ()=>{
       try{
         const d=aerialFrame.contentDocument;
@@ -86,13 +102,13 @@
         s.type="text/javascript";
         s.text = `
           (function(){
-            // Two-finger detector -> parent
+            // 1) Two-finger detector in AERIAL
             (function(){
               let last=0;
               function on2(e){
                 if(e.touches && e.touches.length>=2){
                   const now=performance.now();
-                  if(now-last>400){ last=now; try{ parent.postMessage({type:"AERIAL_TWO_FINGER"}, "*"); }catch{} }
+                  if(now-last>350){ last=now; try{ parent.postMessage({type:"AERIAL_TWO_FINGER"}, "*"); }catch{} }
                   e.preventDefault(); e.stopImmediatePropagation(); return false;
                 }
               }
@@ -101,28 +117,57 @@
               });
             })();
 
-            // True audio level bridge
-            let analyser=null, hooked=false;
-            function startPosting(ctx, node){
-              if(hooked) return;
-              hooked=true;
-              analyser = ctx.createAnalyser(); analyser.fftSize = 512;
-              const capture = new Float32Array(analyser.fftSize);
-              const tee = ctx.createGain(); tee.gain.value = 1.0;
-              try{ node.disconnect(); }catch{}
-              node.connect(tee); tee.connect(ctx.destination); tee.connect(analyser);
-              setInterval(()=>{
-                analyser.getFloatTimeDomainData(capture);
-                let sum=0; for(let i=0;i<capture.length;i++){ const v=capture[i]; sum+=v*v; }
-                const rms = Math.sqrt(sum/capture.length);
+            // 2) True audio tapping + pitch estimation (autocorrelation)
+            let analyser=null, hooked=false, ctx=null;
+            function postLoop(analyser, ctx){
+              const N=2048;
+              const buf=new Float32Array(N);
+              const sr=ctx.sampleRate||48000;
+              const post=()=>{
+                analyser.getFloatTimeDomainData(buf);
+                // Auto-correlation (basic) to estimate fundamental
+                let rms=0; for(let i=0;i<N;i++){ const v=buf[i]; rms+=v*v; }
+                rms=Math.sqrt(rms/N);
+                if(rms<0.01){ requestAnimationFrame(post); return; } // too quiet
+                // Remove DC
+                let mean=0; for(let i=0;i<N;i++){ mean+=buf[i]; } mean/=N;
+                for(let i=0;i<N;i++){ buf[i]-=mean; }
+                let bestOffset=-1, bestCorr=0;
+                let lastCorr=1;
+                for(let offset=20; offset< N/2; offset++){
+                  let corr=0;
+                  for(let i=0;i<N-offset;i++){ corr += buf[i]*buf[i+offset]; }
+                  corr/= (N-offset);
+                  if(corr>bestCorr){ bestCorr=corr; bestOffset=offset; }
+                  if(corr>0.99 && lastCorr<0.99){ /* pass */ }
+                  lastCorr=corr;
+                }
+                let freq=0;
+                if(bestOffset>0){ freq = sr / bestOffset; }
+                if(freq>0){
+                  try{ parent.postMessage({type:"AERIAL_PITCH_HZ", hz: freq}, "*"); }catch{}
+                }
+                // Also derive level (RMS) if needed
                 const level = Math.max(0, Math.min(1, rms*3.0));
                 try{ parent.postMessage({type:"AERIAL_LEVEL_TRUE", vol: level}, "*"); }catch{}
-              }, 50);
+                requestAnimationFrame(post);
+              };
+              requestAnimationFrame(post);
             }
             function tryHook(){
               const cands=[window.masterGain, window.master, window.MainGain, window.master_out, window.gMaster];
               for(const g of cands){
-                try{ if(g && g.context && g.gain){ startPosting(g.context, g); return true; } }catch{}
+                try{
+                  if(g && g.context && g.gain){
+                    ctx=g.context;
+                    analyser = ctx.createAnalyser(); analyser.fftSize=2048;
+                    // Tee at master
+                    const tee=ctx.createGain(); tee.gain.value=1;
+                    try{ g.disconnect(); }catch{}
+                    g.connect(tee); tee.connect(ctx.destination); tee.connect(analyser);
+                    hooked=true; postLoop(analyser, ctx); return true;
+                  }
+                }catch{}
               }
               return false;
             }
@@ -133,20 +178,12 @@
                   const ctx=this.context;
                   for(let i=0;i<arguments.length;i++){
                     if(arguments[i] && arguments[i]===ctx.destination && !hooked){
-                      const tee = ctx.createGain(); tee.gain.value=1.0;
+                      const tee=ctx.createGain(); tee.gain.value=1.0;
                       _connect.call(this, tee);
                       _connect.call(tee, ctx.destination);
-                      analyser = ctx.createAnalyser(); analyser.fftSize = 512;
-                      const capture=new Float32Array(analyser.fftSize);
+                      analyser = ctx.createAnalyser(); analyser.fftSize=2048;
                       _connect.call(tee, analyser);
-                      hooked=true;
-                      setInterval(()=>{
-                        analyser.getFloatTimeDomainData(capture);
-                        let sum=0; for(let j=0;j<capture.length;j++){ const v=capture[j]; sum+=v*v; }
-                        const rms=Math.sqrt(sum/capture.length);
-                        const level=Math.max(0, Math.min(1, rms*3.0));
-                        try{ parent.postMessage({type:"AERIAL_LEVEL_TRUE", vol: level}, "*"); }catch{}
-                      }, 50);
+                      hooked=true; postLoop(analyser, ctx);
                       return;
                     }
                   }
@@ -160,7 +197,7 @@
       }catch{}
     });
 
-    // Inject two-finger detector into KB as well
+    // KB iframe: two-finger detector that doesn't block single touch
     kbFrame.addEventListener("load", ()=>{
       try{
         const d=kbFrame.contentDocument;
@@ -172,7 +209,7 @@
             function on2(e){
               if(e.touches && e.touches.length>=2){
                 const now=performance.now();
-                if(now-last>400){ last=now; try{ parent.postMessage({type:"KB_TWO_FINGER"}, "*"); }catch{} }
+                if(now-last>350){ last=now; try{ parent.postMessage({type:"KB_TWO_FINGER"}, "*"); }catch{} }
                 e.preventDefault(); e.stopImmediatePropagation(); return false;
               }
             }
