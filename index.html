@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
-<title>Baby Theremin Shapes — 全画面再生 (v1.4.0)</title>
-<link rel="manifest" href="./manifest.json?v=1.4.0">
+<title>Baby Theremin Shapes — v1.5.0</title>
+<link rel="manifest" href="./manifest.json?v=1.5.0">
 <meta name="theme-color" content="#1a1a1a">
 <style>
   :root{ --bg:#1a1a1a; --panel:#20232bcc; --text:#E8EAF2; --muted:#8b90a1; }
@@ -24,7 +24,7 @@
 </head>
 <body>
 <canvas id="cv"></canvas>
-<div class="hint" id="hint">👶 画面タッチで「ぽよん」／スマホを傾けると音と図形が変わるよ</div>
+<div class="hint" id="hint">👶 画面タッチで「ぽよん」／傾けるorドラッグで音と図形が変わるよ</div>
 <div class="controls hidden" id="controls">
   <label class="btn">🎵 おんがくフォルダ<input id="audDir" type="file" webkitdirectory directory multiple accept="audio/*" hidden></label>
   <button id="prev" class="btn">← まえ</button>
@@ -36,6 +36,9 @@
   <div class="range">ピッチ最小Hz <input id="pmin" type="range" min="80" max="400" step="1" value="110"></div>
   <div class="range">ピッチ最大Hz <input id="pmax" type="range" min="600" max="2400" step="1" value="1200"></div>
   <div class="range">テルミン音量 <input id="tvol" type="range" min="0" max="1" step="0.01" value="0.25"></div>
+  <div class="range">ゆらぎ（強弱）<input id="trem" type="range" min="0" max="1" step="0.01" value="0.35"></div>
+  <div class="range">ゆらぎ速度<input id="tremSpd" type="range" min="0.1" max="4" step="0.01" value="0.8"></div>
+  <div class="range">二重 detune<input id="detune" type="range" min="0" max="20" step="0.1" value="6"></div>
 </div>
 
 <script>
@@ -49,15 +52,18 @@
   const pminUI  = document.getElementById('pmin');
   const pmaxUI  = document.getElementById('pmax');
   const tvolUI  = document.getElementById('tvol');
+  const tremUI  = document.getElementById('trem');
+  const tremSpd = document.getElementById('tremSpd');
+  const detuneUI= document.getElementById('detune');
   const hint    = document.getElementById('hint');
 
-  // 2本指0.8秒長押しで設定トグル（お母さん用）
+  // 2本指長押しで設定トグル（誤操作防止 1.2s）
   let activePointers = new Map();
   let holdTimer = null;
   function onPointerDown(e){
     activePointers.set(e.pointerId, {x:e.clientX,y:e.clientY});
     if(activePointers.size>=2 && !holdTimer){
-      holdTimer = setTimeout(()=>{ controls.classList.toggle('hidden'); }, 800);
+      holdTimer = setTimeout(()=>{ controls.classList.toggle('hidden'); }, 1200);
     }
   }
   function cancelHold(){ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } }
@@ -90,7 +96,8 @@
   // ===== Audio (BGM + Theremin)
   let audList=[], audIdx=0, audio=new Audio(); audio.preload="auto";
   let actx, analyser, data, playing=false;
-  let thOsc, thGain; // theremin
+  // Theremin nodes
+  let thMix, thAmp, oscA, oscB, lfo, lfoGain; 
 
   function ensureAudio(){
     if(actx) return;
@@ -98,19 +105,61 @@
     const src = actx.createMediaElementSource(audio);
     analyser = actx.createAnalyser(); analyser.fftSize=256;
     data = new Uint8Array(analyser.frequencyBinCount);
-    thGain = actx.createGain(); thGain.gain.value = parseFloat(tvolUI.value);
-    thOsc = actx.createOscillator(); thOsc.type = 'sine'; thOsc.frequency.value=440;
-    // graph: audio -> analyser -> destination; theremin -> gain -> analyser
-    src.connect(analyser);
-    thOsc.connect(thGain).connect(analyser);
-    analyser.connect(actx.destination);
-    thOsc.start();
+
+    // Theremin voice: dual osc + tremolo LFO
+    thMix = actx.createGain();         // mix of A/B
+    thAmp = actx.createGain();         // final amplitude (to be LFO modulated)
+    thAmp.gain.value = parseFloat(tvolUI.value); // base set; will be modulated by LFO below
+
+    oscA = actx.createOscillator(); oscA.type='sine';
+    oscB = actx.createOscillator(); oscB.type='sine';
+
+    // LFO for "ぅおんぅおん" amplitude wobble
+    lfo = actx.createOscillator(); lfo.type='sine';
+    lfoGain = actx.createGain();
+    // depth/ speed initial
+    lfo.frequency.value = parseFloat(tremSpd.value); // Hz
+    lfoGain.gain.value  = parseFloat(tvolUI.value) * parseFloat(tremUI.value) * 0.5; // depth
+
+    // baseline so that (baseline + lfo) stays around desired tvol
+    thAmp.gain.value = parseFloat(tvolUI.value) * (1 - 0.5*parseFloat(tremUI.value));
+
+    // wire
+    oscA.connect(thMix); oscB.connect(thMix);
+    thMix.connect(thAmp).connect(analyser).connect(actx.destination);
+
+    // LFO feeds amplitude param
+    lfo.connect(lfoGain).connect(thAmp.gain);
+    lfo.start();
+
+    oscA.start(); oscB.start();
   }
-  tvolUI.addEventListener('input', ()=>{ if(thGain) thGain.gain.value = parseFloat(tvolUI.value); });
+
+  // live controls
+  function updateDetune(){
+    if(!oscA||!oscB) return;
+    const cents = parseFloat(detuneUI.value||"6");
+    oscA.detune.value = -cents;
+    oscB.detune.value =  cents;
+  }
+  function updateTrem(){
+    if(!lfo||!lfoGain||!thAmp) return;
+    const base = parseFloat(tvolUI.value);
+    const depth= parseFloat(tremUI.value);   // 0..1
+    const speed= parseFloat(tremSpd.value);  // Hz
+    lfo.frequency.setTargetAtTime(speed, actx.currentTime, 0.05);
+    lfoGain.gain.setTargetAtTime(base * depth * 0.5, actx.currentTime, 0.05);
+    thAmp.gain.setTargetAtTime(base * (1 - 0.5*depth), actx.currentTime, 0.05);
+  }
+  tvolUI.addEventListener('input', ()=>{ ensureAudio(); updateTrem(); });
+  tremUI.addEventListener('input', ()=>{ ensureAudio(); updateTrem(); });
+  tremSpd.addEventListener('input', ()=>{ ensureAudio(); updateTrem(); });
+  detuneUI.addEventListener('input', ()=>{ ensureAudio(); updateDetune(); });
 
   ['click','touchstart','pointerdown'].forEach(ev=>{
     window.addEventListener(ev, async ()=>{ ensureAudio(); try{ if(actx.state!=='running') await actx.resume(); }catch(_){ } }, {once:true, passive:true});
   });
+
   function naturalSort(a,b){ return a.name.localeCompare(b.name,'ja',{numeric:true}); }
   document.getElementById('audDir').addEventListener('change', e=>{
     ensureAudio();
@@ -146,8 +195,8 @@
   window.addEventListener('resize', fit, {passive:true});
   if(window.visualViewport){ visualViewport.addEventListener('resize', fit, {passive:true}); }
 
-  // ===== Shapes (かわいいネオン)
-  const COLORS = ["#39FF14","#00FFFF","#FF4D6D","#FFD166","#9D4DFF"];
+  // ===== Shapes
+  const COLORS = ["#A5F3FC","#FBCFE8","#FDE68A","#C7D2FE","#86EFAC"];
   const TYPES = ["circle","triangle","square","star","heart"];
   const shapes=[];
   function starPath(r, spikes=5){ const p=new Path2D(); const step=Math.PI/spikes; p.moveTo(r,0); for(let i=0;i<spikes*2;i++){ const rr=(i%2===0)?r:r*0.45; const a=i*step; p.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);} p.closePath(); return p; }
@@ -193,11 +242,15 @@
   let pitchHz = 440; // 現在ピッチ
   function setPitchFromBetaGamma(beta, gamma){
     const pmin=parseFloat(pminUI.value), pmax=parseFloat(pmaxUI.value);
-    const betaNorm=Math.min(1,Math.max(0,(beta+180)/360)); // -180..180 -> 0..1
-    const curve=Math.sin(betaNorm*Math.PI);                 // Sカーブ
+    const betaNorm=Math.min(1,Math.max(0,(beta+180)/360));
+    const curve=Math.sin(betaNorm*Math.PI);
     pitchHz = pmin + curve*(pmax-pmin);
-    // 画面の横倒しで音量っぽい演出（図形の揺れに寄与）: 未使用でも拡張可
-    if(thOsc) thOsc.frequency.setTargetAtTime(pitchHz, actx?.currentTime||0, 0.02);
+    // route to both oscillators
+    if(oscA && oscB){
+      const t=actx?.currentTime||0;
+      oscA.frequency.setTargetAtTime(pitchHz, t, 0.02);
+      oscB.frequency.setTargetAtTime(pitchHz, t, 0.02);
+    }
   }
   // センサー
   async function requestMotionPermission(){
@@ -229,8 +282,13 @@
     setPitchFromBetaGamma(beta, gamma);
   }
 
-  // ===== draw（ピッチ連動拡大縮小）
-  let t=0;
+  // live: after audio exists, set initial params
+  function initThereminParams(){
+    updateDetune(); updateTrem();
+  }
+
+  // ===== draw（ピッチ連動拡大縮小：より分かりやすく）
+  let t=0; let visScale=1;
   function draw(){
     const w=cv.width,h=cv.height;
     ctx.fillStyle="#1a1a1a"; ctx.fillRect(0,0,w,h);
@@ -239,8 +297,10 @@
     // ピッチ→0..1正規化
     const pmin=parseFloat(pminUI.value), pmax=parseFloat(pmaxUI.value);
     const pnorm=Math.min(1, Math.max(0, (pitchHz - pmin) / Math.max(1,(pmax-pmin)) ));
-    // 0.75〜1.35 くらいでスケール
-    const pitchScale = 0.75 + 0.60 * pnorm;
+    // もっと大きく動く：0.5〜1.6倍に
+    const targetScale = 0.5 + 1.1 * pnorm;
+    // なめらか補間
+    visScale += (targetScale - visScale) * 0.15;
 
     for(const s of shapes){
       s.x+=s.vx; s.y+=s.vy; s.rot+=0.008;
@@ -248,7 +308,7 @@
       if(s.y<s.r){ s.y=s.r; s.vy=Math.abs(s.vy); } if(s.y>h-s.r){ s.y=h-s.r; s.vy=-Math.abs(s.vy); }
       s.vx*=0.992; s.vy*=0.992;
       const basePulse = 1 + 0.07*Math.sin(t*0.03 + s.x*0.003) + s.pulse*0.25;
-      const r = s.r * basePulse * pitchScale; s.pulse *= 0.92;
+      const r = s.r * basePulse * visScale; s.pulse *= 0.92;
       ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.rot);
       ctx.lineJoin="round"; ctx.lineCap="round";
       ctx.shadowColor=s.color; ctx.shadowBlur=glow*2; ctx.strokeStyle=s.color; ctx.lineWidth=lineBase*2.4; drawShapeStroke(s.type,r);
@@ -263,15 +323,26 @@
       case "circle": ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke(); break;
       case "triangle": ctx.beginPath(); const h=r*1.1; ctx.moveTo(0,-h); ctx.lineTo(h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.lineTo(-h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.closePath(); ctx.stroke(); break;
       case "square": ctx.strokeRect(-r,-r,r*2,r*2); break;
-      case "star": ctx.stroke(getStar(r)); break;
-      case "heart": ctx.stroke(getHeart(r)); break;
+      case "star": { const p=getStar(r); ctx.stroke(p); break; }
+      case "heart": { const p=getHeart(r); ctx.stroke(p); break; }
     }
   }
   requestAnimationFrame(draw);
-})();
-</script>
+
+  // helpers
+  const starCache=new Map(), heartCache=new Map();
+  function starPath(r, spikes=5){ const p=new Path2D(); const step=Math.PI/spikes; p.moveTo(r,0); for(let i=0;i<spikes*2;i++){ const rr=(i%2===0)?r:r*0.45; const a=i*step; p.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);} p.closePath(); return p; }
+  function heartPath(r){ const p=new Path2D(); p.moveTo(0,-r*0.2); p.bezierCurveTo(r*0.9,-r*0.9, r*1.4,r*0.5, 0,r*1.2); p.bezierCurveTo(-r*1.4,r*0.5, -r*0.9,-r*0.9, 0,-r*0.2); return p; }
+  function getStar(r){ const k=r|0; if(!starCache.has(k)) starCache.set(k, starPath(k)); return starCache.get(k); }
+  function getHeart(r){ const k=r|0; if(!heartCache.has(k)) heartCache.set(k, heartPath(k)); return heartCache.get(k); }
+
+  // Boot after first interaction
+  ['pointerdown','touchstart','keydown'].forEach(ev=>addEventListener(ev, ()=>{ ensureAudio(); initThereminParams(); }, {once:true, passive:true}));
+
+})();</script>
 <script>
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.4.0"); }
+// SW
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.5.0"); }
 </script>
 </body>
 </html>
