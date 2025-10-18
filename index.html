@@ -94,6 +94,57 @@
       const end=()=>{ on=false; document.body.style.cursor=''; };
       drag.addEventListener('pointerup', end); drag.addEventListener('pointercancel', end);
     })();
-  </script>
+  
+  // Listen for KB two-finger messages
+  window.addEventListener("message", (e)=>{
+    if(e && e.data && e.data.type==="KB_TWO_FINGER"){ toggle(); }
+  });
+
+  // --- Visual coupling (estimate theremin volume from device orientation / pointer proxy) ---
+  let vol01 = 0.0, pitch01 = 0.0;
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+  function lerp(a,b,t){ return a + (b-a)*t; }
+  function map(v,a1,a2,b1,b2){ const t=(v-a1)/(a2-a1); return b1 + (b2-b1)*t; }
+
+  // Estimation: beta (pitch) via 1-cos smoothing, gamma (roll) via sin -> volume
+  function onOrient(e){
+    const br = (e.beta||0)*Math.PI/180;
+    const gr = (e.gamma||0)*Math.PI/180;
+    pitch01 = clamp((1-Math.cos(br))/2, 0, 1);
+    vol01 = (Math.sin(gr)+1)/2;
+  }
+  window.addEventListener("deviceorientation", onOrient, {passive:true});
+
+  // Pointer fallback (desktop): canvas area fills viewport; use center for neutrality
+  let pointerActive=false, px=0.5, py=0.5;
+  document.addEventListener("pointerdown", ev=>{ pointerActive=true; px=ev.clientX/innerWidth; py=ev.clientY/innerHeight; });
+  document.addEventListener("pointermove", ev=>{ if(pointerActive){ px=ev.clientX/innerWidth; py=ev.clientY/innerHeight; }});
+  document.addEventListener("pointerup", ()=>{ pointerActive=false; });
+  setInterval(()=>{
+    if(pointerActive){
+      // Map like AERIAL: Y -> pitch, X -> volume
+      pitch01 = clamp(1-py, 0, 1);
+      vol01 = clamp(px, 0, 1);
+    }
+  }, 16);
+
+  // Animate: scale with volume; wobble with LFO tied to pitch (approx freq 100..1800 Hz -> LFO 2..8 Hz)
+  const kbFrame = document.getElementById('kbFrame');
+  let t=0, sVol=0, sPitch=0;
+  function loop(){
+    requestAnimationFrame(loop);
+    sVol = lerp(sVol, vol01, 0.1);
+    sPitch = lerp(sPitch, pitch01, 0.1);
+    const lfoHz = 2 + sPitch*6; // 2..8 Hz
+    t += lfoHz * 0.016; // assuming ~60fps
+    const wobble = Math.sin(t*2*Math.PI) * 0.015 * (0.3 + 0.7*sVol); // amplitude grows with volume
+    const scale = 1 + 0.08*sVol + wobble; // base scale by volume + wobble
+    const rotate = Math.sin(t*2*Math.PI+Math.PI/2) * 1.2 * sVol; // subtle rotational wobble in degrees
+    kbFrame.style.transform = `scale(${scale}) rotate(${rotate}deg)`;
+    kbFrame.style.transformOrigin = "50% 50%";
+  }
+  loop();
+
+</script>
 </body>
 </html>

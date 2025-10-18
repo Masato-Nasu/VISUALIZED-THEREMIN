@@ -261,5 +261,30 @@ if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.
 })();
 </script>
 
+
+<script>
+(function(){
+  // Emit postMessage to parent when two-finger touch is detected.
+  let last=0;
+  function on2(e){
+    try{
+      if(e.touches && e.touches.length>=2){
+        const now=performance.now();
+        if(now-last>500){
+          last=now;
+          try{ parent.postMessage({type:"KB_TWO_FINGER"}, "*"); }catch{}
+        }
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return false;
+      }
+    }catch{}
+  }
+  ['touchstart','touchmove','touchend','gesturestart'].forEach(tp=>{
+    document.addEventListener(tp, on2, {capture:true, passive:false});
+  });
+})();
+</script>
+
 </body>
 </html>
