@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
 <title>Motion Theremin + Shake Chime + BGM</title>
 <meta name="theme-color" content="#111317">
-<link rel="manifest" href="./manifest.json?v=20251018043543">
+<link rel="manifest" href="./manifest.json?v=20251018043920">
 <style>
   :root {
     --fg: #eaeaea;
@@ -36,7 +36,7 @@
   .btn:active{transform: translateY(1px)}
   .small{font-size:12px;padding:8px 10px}
   #hint{
-    position: fixed; inset: 0; display:flex; align-items:center; justify-content:center; text-align:center; z-index: 12;
+    position: fixed; inset: 0; display:flex; align-items:center; justify-content:center; text-align:center; z-index: 5;
     background: radial-gradient(1200px 1200px at 50% 50%, rgba(77,163,255,.08), transparent 60%), rgba(0,0,0,.55);
     padding: 24px;
   }
@@ -104,7 +104,7 @@
 </div>
 
 <div id="hint" hidden>
-  <div class="box">
+  <div class="box"><button id="hintClose" class="btn small" style="float:right;margin:-6px 0 6px 6px">閉じる</button>
     <h3 style="margin:.2em 0">ご利用前の許可について</h3>
     <p>iOS Safari 等では、<strong>ユーザー操作後</strong>でないと音声・センサーが有効になりません。</p>
     <p>まず「タップして開始（音を解放）」→「センサー許可」の順に押してください。</p>
@@ -255,14 +255,14 @@
         const s2 = await DeviceOrientationEvent.requestPermission();
         if(s2 !== 'granted') throw new Error('DeviceOrientation 未許可');
       }
-      permStatus.textContent = 'センサー許可 OK';
-      hint.hidden = true;
+      permStatus.textContent = 'センサー許可 OK'; hint.hidden = true;
     }catch(err){
       permStatus.textContent = 'センサー許可が必要です';
-      hint.hidden = false;
+      /* keep hint hidden unless permission is denied */
     }
   }
   permBtn.addEventListener('click', requestSensors);
+  document.getElementById('hintClose').addEventListener('click', ()=>{ hint.hidden = true; });
 
   // ---------- Start (unlock audio) ----------
   const startBtn = document.getElementById('startBtn');
@@ -270,7 +270,7 @@
     setupAudio();
     await actx.resume();
     document.getElementById('stage').style.pointerEvents = 'auto';
-    hint.hidden = false;
+    /* keep hint hidden unless permission is denied */
   });
 
   // ---------- Controls ----------
