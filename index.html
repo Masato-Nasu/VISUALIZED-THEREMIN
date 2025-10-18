@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
-<title>Baby Theremin Shapes — v1.7.6</title>
-<link rel="manifest" href="./manifest.json?v=1.7.6">
+<title>Baby Theremin Shapes — v1.7.7</title>
+<link rel="manifest" href="./manifest.json?v=1.7.7">
 <meta name="theme-color" content="#ffffff">
 <style>
   :root{ --bg:#fafbfe; --panel:#ffffffcc; --text:#10121a; }
-  html,body{ height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Roboto,"Noto Sans JP",sans-serif; overscroll-behavior: none; position:fixed; width:100%; }
+  html,body{ height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Roboto,"Noto Sans JP",sans-serif; overscroll-behavior:none; position:fixed; width:100%; }
   #app{ position:fixed; inset:0; }
   .starter{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:linear-gradient(180deg,#ffffff,#f0f4ff);}
   .starter .card{background:#fff;border:1px solid #e5e7eb;border-radius:16px; padding:22px 18px; box-shadow:0 10px 30px rgba(0,0,0,.08); text-align:center; color:#111; max-width:90vw}
@@ -64,9 +64,8 @@
 
 <script>
 (function(){
-  // prevent pull-to-refresh / rubberband
-  document.addEventListener('touchmove', function(e){ e.preventDefault(); }, {passive:false});
-  document.addEventListener('gesturestart', function(e){ e.preventDefault(); }, {passive:false});
+  // block pull-to-refresh
+  document.addEventListener('touchmove', e=>e.preventDefault(), {passive:false});
 
   var app = document.getElementById('app');
   var starter = document.getElementById('starter');
@@ -88,7 +87,7 @@
     themeBtn.textContent = document.documentElement.classList.contains('dark') ? '🌙 暗くする' : '☀ 明るさ';
   });
 
-  // Audio / Graphics state
+  // ===== Audio (cute timbre) =====
   var actx=null, analyser=null, thFilter=null, thAmp=null, oscA=null, oscB=null, lfoTrem=null, lfoTremGain=null, lfoVib=null, lfoVibGain=null, envGain=null;
   var audList=[], audIdx=0, audio=new Audio(); audio.preload='auto', audio.crossOrigin='anonymous';
   var bgmBus=null;
@@ -97,29 +96,15 @@
   var tvolUI=document.getElementById('tvol'), bgmUI=document.getElementById('bgm'), beatAmt=document.getElementById('beatAmt');
   var presetSel=document.getElementById('preset');
 
-  // panel toggle with reliable two-finger long press + triple tap fallback
   var activePointers=new Map(); var holdTimer=null; var taps=0, tapTimer=null;
   function togglePanel(){ controls.classList.toggle('hidden'); }
   function clearPointers(){ activePointers.clear(); if(holdTimer){clearTimeout(holdTimer); holdTimer=null;} }
-  function onPointerDownForMenu(e){
-    activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
-    if(activePointers.size>=2 && !holdTimer){ holdTimer=setTimeout(togglePanel,1100); }
-  }
-  function onPointerMoveForMenu(e){
-    var p=activePointers.get(e.pointerId);
-    if(!p) return;
-    if(Math.abs(e.clientX-p.x)>20||Math.abs(e.clientY-p.y)>20){ clearPointers(); }
-  }
-  function onPointerUpForMenu(){ clearPointers(); }
   function attachPanelGestures(target){
-    target.addEventListener('pointerdown',onPointerDownForMenu,{passive:false});
-    target.addEventListener('pointermove',onPointerMoveForMenu,{passive:false});
-    target.addEventListener('pointerup',onPointerUpForMenu,{passive:false});
-    target.addEventListener('pointercancel',onPointerUpForMenu,{passive:false});
-    target.addEventListener('pointerdown', function(){
-      taps++; if(taps===1){ tapTimer=setTimeout(function(){taps=0},1200); }
-      if(taps>=3){ clearTimeout(tapTimer); taps=0; togglePanel(); }
-    });
+    target.addEventListener('pointerdown',e=>{activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(activePointers.size>=2&&!holdTimer){ holdTimer=setTimeout(togglePanel,1100);}},{passive:false});
+    target.addEventListener('pointermove',e=>{ var p=activePointers.get(e.pointerId); if(!p) return; if(Math.abs(e.clientX-p.x)>20||Math.abs(e.clientY-p.y)>20) clearPointers(); },{passive:false});
+    target.addEventListener('pointerup',()=>clearPointers(),{passive:false});
+    target.addEventListener('pointercancel',()=>clearPointers(),{passive:false});
+    target.addEventListener('pointerdown', ()=>{ taps++; if(taps===1){ tapTimer=setTimeout(()=>taps=0,1200);} if(taps>=3){ clearTimeout(tapTimer); taps=0; togglePanel(); } });
   }
 
   function ensureAudio(){
@@ -128,20 +113,25 @@
     bgmBus=actx.createGain(); bgmBus.gain.value=parseFloat(bgmUI.value);
     analyser=actx.createAnalyser(); analyser.fftSize=256;
 
-    thFilter=actx.createBiquadFilter(); thFilter.type='lowpass'; thFilter.frequency.value=1800;
+    // Cute theremin voice
     envGain=actx.createGain(); envGain.gain.value=0.0;
     thAmp=actx.createGain(); thAmp.gain.value=parseFloat(tvolUI.value);
+    thFilter=actx.createBiquadFilter(); thFilter.type='lowpass'; thFilter.frequency.value=1700; thFilter.Q.value=0.7;
+
     oscA=actx.createOscillator(); oscA.type='sine';
-    oscB=actx.createOscillator(); oscB.type='sine';
-    lfoTrem=actx.createOscillator(); lfoTrem.type='sine'; lfoTrem.frequency.value=0.7;
-    lfoTremGain=actx.createGain(); lfoTremGain.gain.value=0.1;
-    lfoVib=actx.createOscillator(); lfoVib.type='sine'; lfoVib.frequency.value=5.0;
-    lfoVibGain=actx.createGain(); lfoVibGain.gain.value=3.5;
+    oscB=actx.createOscillator(); oscB.type='sine'; oscB.detune.value=+6; // slight chorus
+
+    lfoTrem=actx.createOscillator(); lfoTrem.type='sine'; lfoTrem.frequency.value=0.9;
+    lfoTremGain=actx.createGain(); lfoTremGain.gain.value=0.08; // gentle tremolo
+
+    lfoVib=actx.createOscillator(); lfoVib.type='sine'; lfoVib.frequency.value=5.5;
+    lfoVibGain=actx.createGain(); lfoVibGain.gain.value=7.0; // cents
 
     oscA.connect(thFilter); oscB.connect(thFilter);
     thFilter.connect(envGain).connect(thAmp).connect(analyser).connect(actx.destination);
+
     lfoVib.connect(lfoVibGain); lfoVibGain.connect(oscA.detune); lfoVibGain.connect(oscB.detune);
-    lfoTrem.connect(lfoTremGain).connect(thAmp.gain);
+    lfoTrem.connect(lfoTremGain).connect(envGain.gain);
 
     var src=actx.createMediaElementSource(audio);
     src.connect(bgmBus);
@@ -186,21 +176,19 @@
     addEventListener('orientationchange',fitEnsure,{passive:true});
     if(window.visualViewport){ visualViewport.addEventListener('resize',fitEnsure,{passive:true}); }
 
-    // gestures for sound / burst with sustain
     var pressStart=0, dragging=false, thereminOn=false, holdId=null;
     var lastPos={x:null,y:null};
     var chime=new Audio("./Chime.mp3"); chime.volume=0.3;
 
     function getCanvasPos(e){ var r=cv.getBoundingClientRect(); var x=(e.clientX-r.left)/r.width*cv.width; var y=(e.clientY-r.top)/r.height*cv.height; if(isFinite(x)&&isFinite(y)) return {x:x,y:y}; return null; }
     function updateLastPos(e){ var p=getCanvasPos(e); if(p) lastPos=p; }
-
-    function startTheremin(){ thereminOn=true; gateOn(); }
-    function stopTheremin(){ thereminOn=false; gateOff(); if(holdId){ clearTimeout(holdId); holdId=null; } }
+    function startTheremin(){ thereminOn=true; var t=actx.currentTime; envGain.gain.cancelScheduledValues(t); envGain.gain.setTargetAtTime(1.0,t,0.02); } // soft attack
+    function stopTheremin(){ thereminOn=false; var t=actx.currentTime; envGain.gain.cancelScheduledValues(t); envGain.gain.setTargetAtTime(0.0,t,0.10); if(holdId){clearTimeout(holdId); holdId=null;} }
 
     cv.addEventListener('pointerdown', function(e){
       pressStart=Date.now(); dragging=true; updateLastPos(e);
       if(holdId) clearTimeout(holdId);
-      holdId = setTimeout(function(){ startTheremin(); }, 160); // 160ms後にテルミン開始（持続）
+      holdId = setTimeout(function(){ startTheremin(); }, 220); // threshold 220ms
     });
 
     cv.addEventListener('pointermove', function(e){
@@ -213,17 +201,18 @@
       if(!dragging) return;
       dragging=false;
       var dur=Date.now()-pressStart;
+      if(holdId){ clearTimeout(holdId); holdId=null; } // ensure no late gate
       if(thereminOn){
-        stopTheremin(); // 指を離したら停止
+        stopTheremin();
       }else{
-        // 短タップ：プラック＋バースト
+        // short tap: pluck only (very short, no sustain)
         doPluck();
         try{ chime.currentTime=0; chime.play(); }catch(_){}
         doBurst(e);
       }
     });
 
-    cv.addEventListener('pointercancel', function(){ dragging=false; stopTheremin(); });
+    cv.addEventListener('pointercancel', function(){ dragging=false; if(holdId){clearTimeout(holdId); holdId=null;} stopTheremin(); });
 
     function onThereminDrag(e){ var p=getCanvasPos(e); if(!p) return; var beta=(p.y/cv.height - 0.5)*360; setPitchFromBeta(beta); }
 
@@ -265,10 +254,8 @@
     requestAnimationFrame(draw);
   }
 
-  // Simple synth helpers
-  function doPluck(){ if(!actx) return; var now=actx.currentTime; var o=actx.createOscillator(); o.type='triangle'; var g=actx.createGain(); g.gain.value=0.0; var lpf=actx.createBiquadFilter(); lpf.type='lowpass'; lpf.frequency.value=2400; o.connect(lpf).connect(g).connect(actx.destination); var f=window.pitchHz||440; o.frequency.value=f; g.gain.setValueAtTime(0,now); g.gain.linearRampToValueAtTime(0.9, now+0.01); g.gain.exponentialRampToValueAtTime(0.0001, now+0.35); o.start(now); o.stop(now+0.5); }
-  function gateOn(){ if(!envGain||!actx) return; var t=actx.currentTime; envGain.gain.cancelScheduledValues(t); envGain.gain.setTargetAtTime(1.0,t,0.01); }
-  function gateOff(){ if(!envGain||!actx) return; var t=actx.currentTime; envGain.gain.cancelScheduledValues(t); envGain.gain.setTargetAtTime(0.0,t,0.12); }
+  // Simple pluck (no sustain)
+  function doPluck(){ if(!actx) return; var now=actx.currentTime; var o=actx.createOscillator(); o.type='triangle'; var g=actx.createGain(); g.gain.value=0.0; var lpf=actx.createBiquadFilter(); lpf.type='lowpass'; lpf.frequency.value=2400; o.connect(lpf).connect(g).connect(actx.destination); var f=window.pitchHz||440; o.frequency.value=f; g.gain.setValueAtTime(0,now); g.gain.linearRampToValueAtTime(0.9, now+0.01); g.gain.exponentialRampToValueAtTime(0.0001, now+0.28); o.start(now); o.stop(now+0.4); }
   function setPitchFromBeta(beta){ var pmin=120, pmax=900; var n=Math.min(1,Math.max(0,(beta+180)/360)); var curve=Math.sin(n*Math.PI); window.pitchHz = pmin + curve*(pmax-pmin); if(actx&&oscA&&oscB){ var t=actx.currentTime; oscA.frequency.setTargetAtTime(window.pitchHz,t,0.02); oscB.frequency.setTargetAtTime(window.pitchHz,t,0.02); } if(actx&&thFilter){ thFilter.frequency.setTargetAtTime(1400 + curve*1200, actx.currentTime, 0.06); } }
 
   // Presets & folder BGM
@@ -301,7 +288,7 @@
 
 })();</script>
 <script>
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.7.6"); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.7.7"); }
 </script>
 </body>
 </html>
