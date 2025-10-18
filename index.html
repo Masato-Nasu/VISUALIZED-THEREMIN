@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
 <title>Motion Theremin + Shake Chime + BGM</title>
 <meta name="theme-color" content="#111317">
-<link rel="manifest" href="./manifest.json?v=20251018044841">
+<link rel="manifest" href="./manifest.json?v=20251018045133">
 <style>
   :root {
     --fg: #eaeaea;
@@ -91,7 +91,19 @@
       <label>チャイム 音量（振ると鳴る）</label>
       <input id="volChime" type="range" min="0" max="1" step="0.001" value="0.8">
     </div>
+  
+  <div class="card" id="debugCard" style="display:grid;gap:6px">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button id="reperm" class="btn small">センサー再許可</button>
+      <label style="display:flex;gap:6px;align-items:center"><input id="forceAccel" type="checkbox"> フォールバック固定</label>
+      <span id="secureWarn" style="font-size:12px;color:#ff8a80"></span>
+    </div>
+    <div style="font-size:12px;color:#9aa0a6">
+      ORI:<span id="oriCnt">0</span> / MOT:<span id="motCnt">0</span>
+      ｜ beta:<span id="betaV">0</span> gamma:<span id="gammaV">0</span>
+    </div>
   </div>
+
   <div class="card">
     <div style="font-size:12px; line-height:1.5">
       操作ガイド：<br/>
@@ -287,6 +299,52 @@
 
   
   // ---------- Sensor Watchdog & Fallback ----------
+
+  // ---------- Secure Context & Debug ----------
+  const reperm = document.getElementById('reperm');
+  const forceAccel = document.getElementById('forceAccel');
+  const oriCntEl = document.getElementById('oriCnt');
+  const motCntEl = document.getElementById('motCnt');
+  const betaV = document.getElementById('betaV');
+  const gammaV = document.getElementById('gammaV');
+  const secureWarn = document.getElementById('secureWarn');
+
+  const isSecure = (location.protocol === 'https:') || (location.hostname === 'localhost') || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  if (!isSecure) {
+    secureWarn.textContent = '要HTTPS/インストール。file://直読み不可の端末あり';
+  }
+
+  let oriCnt=0, motCnt=0;
+  // Patch applyThereminFromAngles to also update debug
+  const _apply = applyThereminFromAngles;
+  applyThereminFromAngles = function(beta, gamma){
+    betaV.textContent = beta.toFixed(1);
+    gammaV.textContent = gamma.toFixed(1);
+    return _apply(beta, gamma);
+  };
+
+  // Tap to re-request permissions
+  reperm.addEventListener('click', async () => {
+    try {
+      // On iOS 13+ style APIs
+      if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === 'function') {
+        await DeviceMotionEvent.requestPermission();
+      }
+      if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        await DeviceOrientationEvent.requestPermission();
+      }
+    } catch(e) { console.warn(e); }
+  });
+
+  // Count events
+  const _handleOrientation = handleOrientation;
+  handleOrientation = function(ev){ oriCnt++; oriCntEl.textContent = oriCnt; _handleOrientation(ev); };
+  const _handleMotion = handleMotion;
+  handleMotion = function(ev){ motCnt++; motCntEl.textContent = motCnt; _handleMotion(ev); };
+
+  // Force accel fallback if toggled
+  forceAccel.addEventListener('change', e => { useAccelFallback = !!e.target.checked; });
+
   const sensorStatus = document.getElementById('sensorStatus');
   let lastOri = 0, lastMotion = 0;
   let useAccelFallback = false;
