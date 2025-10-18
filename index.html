@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
 <title>Motion Theremin + Shake Chime + BGM</title>
 <meta name="theme-color" content="#111317">
-<link rel="manifest" href="./manifest.json?v=20251018045954">
+<link rel="manifest" href="./manifest.json?v=20251018050220">
 <style>
   :root {
     --fg: #eaeaea;
@@ -74,6 +74,24 @@
       </label>
     </div>
   </div>
+  
+  <div class="card" id="thereminCtrl" style="display:grid;gap:6px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <label style="display:flex;gap:6px;align-items:center"><input id="thOn" type="checkbox" checked> Theremin ON</label>
+      <label style="display:flex;gap:6px;align-items:center"><input id="manualVol" type="checkbox"> 手動ボリューム</label>
+      <label style="display:flex;gap:6px;align-items:center"><input id="alwaysOn" type="checkbox"> 常時鳴らす（テスト）</label>
+      <label style="display:flex;gap:6px;align-items:center">波形
+        <select id="waveSel">
+          <option value="sine">sine</option>
+          <option value="triangle">triangle</option>
+          <option value="square">square</option>
+          <option value="sawtooth">sawtooth</option>
+        </select>
+      </label>
+    </div>
+    <div style="font-size:12px;color:#9aa0a6">FREQ: <span id="freqRead">—</span> Hz ｜ VOL: <span id="volRead">—</span></div>
+  </div>
+
   <div class="card" style="display:grid;gap:6px">
     <div>
       <label>Master 音量</label>
@@ -207,6 +225,50 @@
   // Update state regularly
   setInterval(updateAudioState, 500);
 
+  
+  // ---------- Theremin Controls ----------
+  const thOn = document.getElementById('thOn');
+  const manualVol = document.getElementById('manualVol');
+  const alwaysOn = document.getElementById('alwaysOn');
+  const waveSel = document.getElementById('waveSel');
+  const freqRead = document.getElementById('freqRead');
+  const volRead = document.getElementById('volRead');
+
+  function ensureThereminRunning(){
+    if (!actx) setupAudio();
+    if (oscTheremin) try { oscTheremin.start ? oscTheremin.start(0) : null; } catch(e) {}
+    updateAudioState && updateAudioState();
+  }
+
+  thOn.addEventListener('change', () => {
+    ensureThereminRunning();
+    const on = thOn.checked;
+    const base = Number(document.getElementById('volTheremin').value);
+    if (gainTheremin){
+      const v = on ? base * (manualVol.checked ? 1 : 0.2) : 0; // give a little audible baseline if not manual
+      gainTheremin.gain.setTargetAtTime(v, actx.currentTime, 0.02);
+    }
+  });
+
+  waveSel.addEventListener('change', () => { if(oscTheremin){ oscTheremin.type = waveSel.value; }});
+  manualVol.addEventListener('change', () => {
+    if (manualVol.checked) { sensorStatus.textContent = 'SENS:MANUAL'; }
+  });
+
+  alwaysOn.addEventListener('change', () => {
+    ensureThereminRunning();
+    if (alwaysOn.checked){
+      // Set mid pitch and audible volume until sensors/mouse move it
+      if (oscTheremin) oscTheremin.frequency.setTargetAtTime(440, actx.currentTime, 0.02);
+      if (gainTheremin){
+        const base = Number(document.getElementById('volTheremin').value);
+        gainTheremin.gain.setTargetAtTime(base * (manualVol.checked ? 1.0 : 0.5), actx.currentTime, 0.02);
+      }
+    }
+  });
+
+  // Update readouts every frame (patched inside render)
+
   // ---------- Utilities ----------
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const lerp = (a,b,t)=>a+(b-a)*t;
@@ -241,7 +303,7 @@
     dataArr = new Uint8Array(analyser.frequencyBinCount);
 
     // Theremin
-    gainTheremin = actx.createGain(); gainTheremin.gain.value = Number(document.getElementById('volTheremin').value);
+    gainTheremin = actx.createGain(); gainTheremin.gain.value = Math.max(0.05, Number(document.getElementById('volTheremin').value));
     oscTheremin = actx.createOscillator();
     oscTheremin.type = 'sine';
     oscTheremin.frequency.value = 220;
@@ -494,6 +556,7 @@
     return d;
   });
 
+  let _lastFreq = 0;
   function render(){
     requestAnimationFrame(render);
     let amp = 0;
@@ -516,6 +579,9 @@
     const cx = w/2, cy = h/2;
     const time = performance.now()*0.001;
     const freq = (typeof oscTheremin !== "undefined" && oscTheremin && oscTheremin.frequency ? oscTheremin.frequency.value : 220);
+    _lastFreq = freq;
+    if (typeof freqRead !== 'undefined' && freqRead) freqRead.textContent = freq.toFixed(1);
+    if (typeof gainTheremin !== 'undefined' && gainTheremin && typeof volRead !== 'undefined' && volRead) volRead.textContent = gainTheremin.gain.value.toFixed(3);
     const pulse = 0.6 + 0.4 * Math.sin(time*2 + freq*0.002);
     const rad = Math.min(w,h) * (0.22 + 0.18*pulse + 0.22*amp);
 
