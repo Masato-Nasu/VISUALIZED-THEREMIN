@@ -29,201 +29,75 @@
   <script>
 
     if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js"); }
+    const kbFrame = document.getElementById('kbFrame');
     const panel = document.getElementById('panel');
     const hint = document.getElementById('hint');
-    const kbFrame = document.getElementById('kbFrame');
     const aerialFrame = document.getElementById('aerialFrame');
 
-    function setPanel(show){
-      panel.style.display = show ? "block" : "none";
-      hint.style.opacity = show ? 0.6 : 0.9;
-    }
-    function toggle(force){
-      if(typeof force==="boolean"){ setPanel(force); }
-      else { setPanel(panel.style.display!=="block"); }
-    }
+    function setPanel(show){ panel.style.display = show ? "block" : "none"; hint.style.opacity = show ? 0.6 : 0.9; }
+    function toggle(force){ if(typeof force==="boolean"){ setPanel(force); } else { setPanel(panel.style.display!=="block"); } }
+    (function(){ setPanel(true); setTimeout(()=>setPanel(false), 2500); })();
 
-    // Initial show once then hide
-    (function init(){
-      setPanel(true);
-      setTimeout(()=>setPanel(false), 3500);
-    })();
-
-    // Orientation permission (iOS)
-    async function requestOrientationPerm(){
-      try{
-        if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === "function"){
-          const r = await DeviceOrientationEvent.requestPermission();
-          console.log("Orientation perm:", r);
-        }
-      }catch(e){}
-      try{
-        if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === "function"){
-          const r2 = await DeviceMotionEvent.requestPermission();
-          console.log("Motion perm:", r2);
-        }
-      }catch(e){}
-      try{
-        // Ask AERIAL frame to request too
-        if(aerialFrame && aerialFrame.contentWindow){
-          aerialFrame.contentWindow.postMessage({type:"REQ_ORIENT_PERM"}, "*");
-        }
-      }catch(e){}
-    }
-    // Trigger permission when user first interacts
-    let permAsked=false;
-    const askOnce = ()=>{ if(!permAsked){ permAsked=true; requestOrientationPerm(); } };
-    document.addEventListener('pointerdown', askOnce, {once:true});
-    document.addEventListener('touchstart', askOnce, {once:true});
-
-    // Two-finger on wrapper
+    // Parent two-finger
     let lastTF=0;
     document.addEventListener('touchstart', e=>{
       const now=performance.now();
-      if(e.touches && e.touches.length>=2 && now-lastTF>500){ lastTF=now; toggle(); }
+      if(e.touches && e.touches.length>=2 && now-lastTF>400){ lastTF=now; toggle(); }
     }, {passive:true});
 
-    // Aux toggles
-    // Long press
+    // Aux: long-press & S
     (function(){
-      let timer=null;
-      document.addEventListener('touchstart', e=>{
-        if(e.touches && e.touches.length===1){
-          timer=setTimeout(()=>toggle(), 800);
-        }
-      }, {passive:true});
-      function cancel(){ if(timer){ clearTimeout(timer); timer=null; } }
-      document.addEventListener('touchend', cancel);
-      document.addEventListener('touchmove', cancel);
+      let t=null;
+      document.addEventListener('touchstart', e=>{ if(e.touches?.length===1){ t=setTimeout(()=>toggle(), 800);} }, {passive:true});
+      const cancel=()=>{ if(t){ clearTimeout(t); t=null; } };
+      document.addEventListener('touchend', cancel); document.addEventListener('touchmove', cancel);
     })();
-    // Keyboard
     document.addEventListener('keydown', e=>{ if(e.key==='s'||e.key==='S'){ toggle(); } });
 
-    // Emergency hotspot (top-left 20x20)
+    // Emergency hotspots
     (function(){
-      const spot=document.createElement('button');
-      spot.textContent="⚙";
-      spot.style.position="fixed"; spot.style.left="6px"; spot.style.top="6px";
-      spot.style.width="24px"; spot.style.height="24px";
-      spot.style.borderRadius="6px"; spot.style.border="1px solid #2a2a33";
-      spot.style.background="#111114cc"; spot.style.color="#cfd3ff";
-      spot.style.font="600 12px ui-sans-serif"; spot.style.zIndex="30";
-      spot.style.opacity="0.5";
-      spot.addEventListener('click', ()=>toggle(true));
-      document.body.appendChild(spot);
+      const gear=document.createElement('button');
+      gear.textContent="⚙"; Object.assign(gear.style,{position:"fixed",left:"6px",top:"6px",width:"24px",height:"24px",borderRadius:"6px",border:"1px solid #2a2a33",background:"#111114cc",color:"#cfd3ff",font:"600 12px ui-sans-serif",zIndex:30,opacity:.55});
+      gear.addEventListener('click', ()=>toggle(true)); document.body.appendChild(gear);
+      const br=document.createElement('div');
+      Object.assign(br.style,{position:"fixed",right:"8px",bottom:"8px",width:"48px",height:"48px",zIndex:29,background:"transparent"});
+      let lastTap=0; br.addEventListener('touchstart', e=>{ const now=performance.now(); if(now-lastTap<350){ toggle(true); } lastTap=now; }, {passive:true});
+      document.body.appendChild(br);
     })();
 
-    // Bridge & messaging
+    // Level from AERIAL (true) only
+    let env=0; const ATTACK=0.7, RELEASE=0.2;
+    kbFrame.style.transition="none"; kbFrame.style.transformOrigin="50% 50%";
     window.addEventListener("message", (e)=>{
-      if(e && e.data && e.data.type==="KB_TWO_FINGER"){ toggle(); }
-      if(e && e.data && e.data.type==="AERIAL_LEVEL" && typeof e.data.vol==="number"){
-        latestVol = Math.max(0, Math.min(1, e.data.vol));
-        lastFromAerial = performance.now();
+      if(e?.data?.type==="AERIAL_LEVEL_TRUE" && typeof e.data.vol==="number"){
+        const target = Math.max(0, Math.min(1, e.data.vol));
+        const coeff = (target>=env) ? ATTACK : RELEASE;
+        env = env + (target - env) * coeff;
+        const scale = 1 + 0.22*env;
+        kbFrame.style.transform = `scale(${scale})`;
       }
-      if(e && e.data && e.data.type==="REQ_ORIENT_PERM_PARENT"){ requestOrientationPerm(); }
+      if(e?.data?.type==="KB_TWO_FINGER"){ toggle(); }
     });
 
-    // Volume coupling
-    let latestVol = 0.0, lastFromAerial = 0;
-    let envVol = 0.0;
-    const ATTACK = 0.35, RELEASE = 0.06;
-    function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
-    function lerp(a,b,t){ return a + (b-a)*t; }
+    // Tell AERIAL we're ready (optional)
+    try{ aerialFrame.contentWindow.postMessage({type:"HELLO_PARENT"}, "*"); }catch{}
 
-    // Fallback estimation if AERIAL hasn't reported in 250ms
-    let pitch01=0, volEst=0;
-    function onOrient(e){
-      const br=(e.beta||0)*Math.PI/180;
-      const gr=(e.gamma||0)*Math.PI/180;
-      pitch01 = clamp((1-Math.cos(br))/2,0,1);
-      volEst = (Math.sin(gr)+1)/2;
-    }
-    window.addEventListener("deviceorientation", onOrient, {passive:true});
-
-    // Mouse fallback
-    let pointerActive=false, px=0.5, py=0.5;
-    document.addEventListener("pointerdown", ev=>{ pointerActive=true; px=ev.clientX/innerWidth; py=ev.clientY/innerHeight; });
-    document.addEventListener("pointermove", ev=>{ if(pointerActive){ px=ev.clientX/innerWidth; py=ev.clientY/innerHeight; }});
-    document.addEventListener("pointerup", ()=>{ pointerActive=false; });
-    setInterval(()=>{
-      if(pointerActive && performance.now()-lastFromAerial>250){
-        volEst = clamp(px,0,1);
-      }
-    }, 16);
-
-    // Apply scale only (no wobble/rotation/transitions)
-    kbFrame.style.transition="none";
-    kbFrame.style.transformOrigin="50% 50%";
-
-    function loop(){
-      requestAnimationFrame(loop);
-      // Choose source
-      const useVol = (performance.now()-lastFromAerial<=250) ? latestVol : volEst;
-      // Envelope follower
-      const coeff = (useVol>envVol) ? ATTACK : RELEASE;
-      envVol = envVol + (useVol - envVol) * coeff;
-      const scale = 1 + 0.16 * envVol;
-      kbFrame.style.transform = `scale(${scale})`;
-
-      // Ask AERIAL for its current level every frame
-      if(aerialFrame && aerialFrame.contentWindow){
-        aerialFrame.contentWindow.postMessage({type:"REQ_LEVEL"}, "*");
-        // also ask it to request orientation perm if needed
-        aerialFrame.contentWindow.postMessage({type:"REQ_ORIENT_PERM"}, "*");
-      }
-    }
-    loop();
-
-    // Inject bridge into AERIAL (same-origin assumed)
-    aerialFrame.addEventListener("load", ()=>{
+    // Inject robust two-finger detector into KB
+    document.getElementById('kbFrame').addEventListener('load', ()=>{
       try{
-        const doc=aerialFrame.contentDocument;
-        const s=doc.createElement("script");
-        s.type="text/javascript";
-        s.text = `
-          (function(){
-            let vol01=0;
-            function onOrient(e){
-              const gr=(e.gamma||0)*Math.PI/180;
-              vol01 = (Math.sin(gr)+1)/2;
-            }
-            window.addEventListener("deviceorientation", onOrient, {passive:true});
-            window.addEventListener("message", async (e)=>{
-              if(e && e.data && e.data.type==="REQ_LEVEL"){
-                try{ parent.postMessage({type:"AERIAL_LEVEL", vol: vol01}, "*"); }catch{}
-              }
-              if(e && e.data && e.data.type==="REQ_ORIENT_PERM"){
-                try{
-                  if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === "function"){
-                    const r = await DeviceOrientationEvent.requestPermission();
-                    parent.postMessage({type:"REQ_ORIENT_PERM_PARENT", status:r}, "*");
-                  }
-                }catch{}
-              }
-            });
-          })();
-        `;
-        doc.head.appendChild(s);
-      }catch(e){}
-    });
-
-    // Inject two-finger detector directly into KB iframe (so it always posts to parent)
-    kbFrame.addEventListener("load", ()=>{
-      try{
-        const d = kbFrame.contentDocument;
-        const s = d.createElement("script");
+        const d=document.getElementById('kbFrame').contentDocument;
+        const s=d.createElement("script");
         s.type="text/javascript";
         s.text = `
           (function(){
             let last=0;
             function on2(e){
-              try{
-                if(e.touches && e.touches.length>=2){
-                  const now=performance.now();
-                  if(now-last>500){ last=now; try{ parent.postMessage({type:"KB_TWO_FINGER"}, "*"); }catch{} }
-                  e.preventDefault(); e.stopImmediatePropagation(); return false;
-                }
-              }catch{}
+              if(e.touches && e.touches.length>=2){
+                const now=performance.now();
+                if(now-last>400){ last=now; try{ parent.postMessage({type:"KB_TWO_FINGER"}, "*"); }catch{} }
+                e.preventDefault(); e.stopImmediatePropagation();
+                return false;
+              }
             }
             ['touchstart','touchmove','touchend','gesturestart'].forEach(tp=>{
               document.addEventListener(tp, on2, {capture:true, passive:false});
@@ -231,7 +105,7 @@
           })();
         `;
         d.head.appendChild(s);
-      }catch(e){}
+      }catch{}
     });
 
 </script>
