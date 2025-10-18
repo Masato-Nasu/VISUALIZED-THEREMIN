@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
-<title>Baby Theremin Shapes — v1.5.2</title>
-<link rel="manifest" href="./manifest.json?v=1.5.2">
+<title>Baby Theremin Shapes — v1.6.0</title>
+<link rel="manifest" href="./manifest.json?v=1.6.0">
 <meta name="theme-color" content="#1a1a1a">
 <style>
   :root{ --bg:#1a1a1a; --panel:#20232bcc; --text:#E8EAF2; --muted:#8b90a1; }
@@ -12,20 +12,23 @@
   #cv{ position:fixed; inset:0; width:100vw; height:100dvh; display:block; touch-action:none; background:var(--bg); }
   .controls{ position:fixed; left:0; right:0; bottom:0; padding:12px; display:flex; flex-wrap:wrap; gap:10px; justify-content:center; align-items:center;
     background:var(--panel); backdrop-filter:saturate(1.05) blur(6px); border-top-left-radius:16px; border-top-right-radius:16px;
-    transition:opacity .2s ease, visibility .2s ease, transform .2s ease; transform:translateY(8px); }
-  .hidden{ opacity:0; visibility:hidden; pointer-events:none; transform:translateY(12px); }
+    transition:opacity .2s ease, visibility .2s ease, transform .2s ease; transform:translateY(8px) }
+  .controls *{ touch-action:manipulation }
+  .controls.hidden{ opacity:0; visibility:hidden; pointer-events:none; transform:translateY(12px) }
   .btn{appearance:none;border:0;border-radius:14px;background:#2f6feb;color:#fff; padding:12px 16px;font-size:16px;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
   .btn:active{transform:translateY(1px)}
   .range{display:inline-flex;align-items:center;gap:10px;background:#0f1117; color:#E8EAF2; border-radius:14px;padding:10px 12px; box-shadow:0 2px 8px rgba(0,0,0,.25)}
   input[type="range"]{width:160px}
   .hint{position:fixed;top:10px;left:50%;transform:translateX(-50%);background:#00000066;border:1px solid #ffffff1a;color:#fff;
         padding:8px 12px;border-radius:10px;font-size:14px}
+  .closer{position:absolute;right:8px;top:-36px;background:#00000080;border:1px solid #ffffff22;color:#fff;padding:6px 10px;border-radius:10px}
 </style>
 </head>
 <body>
 <canvas id="cv"></canvas>
-<div class="hint" id="hint">👶 画面タッチで“ほわん”／上下ドラッグでピッチ、離すと静かになるよ</div>
+<div class="hint" id="hint">👶 軽くタッチ＝ポン（チャイム）／長押しドラッグ＝テルミン</div>
 <div class="controls hidden" id="controls">
+  <button id="closePanel" class="closer">× とじる</button>
   <label class="btn">🎵 おんがくフォルダ<input id="audDir" type="file" webkitdirectory directory multiple accept="audio/*" hidden></label>
   <button id="prev" class="btn">← まえ</button>
   <button id="play" class="btn">▶ / ❚❚</button>
@@ -42,142 +45,88 @@
   <div class="range">ビブラート深さ<input id="vibDepth" type="range" min="0" max="18" step="0.1" value="3.5"></div>
   <div class="range">ビブラート速度<input id="vibRate" type="range" min="0.5" max="8" step="0.01" value="5"></div>
   <div class="range">フィルター明るさ<input id="bright" type="range" min="400" max="5000" step="1" value="1800"></div>
+  <div class="range">ビート反応<input id="beatAmt" type="range" min="0" max="0.4" step="0.01" value="0.18"></div>
 </div>
 
 <script>
 (function(){
-  var cv = document.getElementById('cv');
-  var ctx = cv.getContext('2d', { alpha:false });
-  var controls = document.getElementById('controls');
-  var countUI = document.getElementById('count');
-  var thickUI = document.getElementById('thick');
-  var glowUI  = document.getElementById('glow');
-  var pminUI  = document.getElementById('pmin');
-  var pmaxUI  = document.getElementById('pmax');
-  var tvolUI  = document.getElementById('tvol');
-  var tremUI  = document.getElementById('trem');
-  var tremSpd = document.getElementById('tremSpd');
-  var detuneUI= document.getElementById('detune');
-  var vibDepth= document.getElementById('vibDepth');
-  var vibRate = document.getElementById('vibRate');
-  var bright  = document.getElementById('bright');
-  var hint    = document.getElementById('hint');
+  var cv=document.getElementById('cv'), ctx=cv.getContext('2d',{alpha:false});
+  var controls=document.getElementById('controls');
+  var closePanel=document.getElementById('closePanel');
+  var countUI=document.getElementById('count'), thickUI=document.getElementById('thick'), glowUI=document.getElementById('glow');
+  var pminUI=document.getElementById('pmin'), pmaxUI=document.getElementById('pmax');
+  var tvolUI=document.getElementById('tvol'), tremUI=document.getElementById('trem'), tremSpd=document.getElementById('tremSpd');
+  var detuneUI=document.getElementById('detune'), vibDepth=document.getElementById('vibDepth'), vibRate=document.getElementById('vibRate'), bright=document.getElementById('bright');
+  var beatAmt=document.getElementById('beatAmt');
+  var hint=document.getElementById('hint');
 
-  window.pitchHz = 440;
+  window.pitchHz=440;
 
-  // settings toggle (two-finger 1.2s hold)
-  var activePointers = new Map();
-  var holdTimer = null;
+  // ===== panel controls (two-finger 1.2s / triple tap / button) =====
+  var activePointers=new Map(); var holdTimer=null;
+  function togglePanel(){ controls.classList.toggle('hidden'); }
+  function clearPointers(){ activePointers.clear(); if(holdTimer){clearTimeout(holdTimer); holdTimer=null;} }
   function onPointerDownForMenu(e){
-    activePointers.set(e.pointerId, {x:e.clientX,y:e.clientY});
-    if(activePointers.size>=2 && !holdTimer){
-      holdTimer = setTimeout(function(){ controls.classList.toggle('hidden'); }, 1200);
-    }
+    activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(activePointers.size>=2 && !holdTimer){ holdTimer=setTimeout(togglePanel,1200); }
   }
-  function cancelHold(){ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } }
-  function onPointerUpForMenu(e){ activePointers.delete(e.pointerId); cancelHold(); }
-  function onPointerMoveForMenu(e){
-    var p=activePointers.get(e.pointerId);
-    if(p){
-      var dx=Math.abs(e.clientX-p.x), dy=Math.abs(e.clientY-p.y);
-      if(dx>20 || dy>20) cancelHold();
-    }
-  }
-  ['pointerdown','pointerup','pointercancel','pointermove'].forEach(function(ev){
-    cv.addEventListener(ev, function(e){
-      if(ev==='pointerdown') onPointerDownForMenu(e);
-      if(ev==='pointerup' || ev==='pointercancel') onPointerUpForMenu(e);
-      if(ev==='pointermove') onPointerMoveForMenu(e);
-    }, {passive:false});
-  });
+  function onPointerMoveForMenu(e){ var p=activePointers.get(e.pointerId); if(!p) return; if(Math.abs(e.clientX-p.x)>20 || Math.abs(e.clientY-p.y)>20){ clearPointers(); } }
+  function onPointerUpForMenu(){ clearPointers(); }
+  cv.addEventListener('pointerdown',onPointerDownForMenu,{passive:false});
+  cv.addEventListener('pointermove',onPointerMoveForMenu,{passive:false});
+  cv.addEventListener('pointerup',onPointerUpForMenu,{passive:false});
+  cv.addEventListener('pointercancel',onPointerUpForMenu,{passive:false});
+  var taps=0,tapTimer=null; cv.addEventListener('pointerdown',function(){ taps++; if(taps===1){ tapTimer=setTimeout(function(){taps=0},1200);} if(taps>=3){ clearTimeout(tapTimer); taps=0; togglePanel(); }});
+  closePanel.addEventListener('click', function(){ controls.classList.add('hidden'); });
 
-  // First touch => fullscreen + audio unlock
+  // ===== first touch => fullscreen & audio =====
   cv.addEventListener('pointerdown', function(){
-    if(!document.fullscreenElement){
-      try{ document.documentElement.requestFullscreen(); }catch(_){}
-    }
-    ensureAudio();
-    try{ if(actx && actx.state!=='running') actx.resume(); }catch(_){}
+    if(!document.fullscreenElement){ try{ document.documentElement.requestFullscreen(); }catch(_){ } }
+    ensureAudio(); try{ if(actx && actx.state!=='running') actx.resume(); }catch(_){}
     if(hint && hint.parentNode) hint.parentNode.removeChild(hint);
   }, {once:true});
 
-  // ===== Audio (softer "ほわん") =====
+  // ===== audio chain =====
   var audList=[], audIdx=0, audio=new Audio(); audio.preload="auto";
-  var actx=null, analyser=null;
+  var actx=null, analyser=null, analyserData=null;
   var thMix=null, thFilter=null, thAmp=null, oscA=null, oscB=null, lfoTrem=null, lfoTremGain=null, lfoVib=null, lfoVibGain=null;
-  var envGain=null; var gate=0; // touch-to-play envelope
+  var envGain=null; // for theremin gate
+  var pluckEnv=null, pluckOsc=null, pluckFilter=null; // for pluck
 
   function ensureAudio(){
     if(actx) return;
-    var AC = window.AudioContext || window.webkitAudioContext;
-    actx = new AC();
-    var src = actx.createMediaElementSource(audio);
-    analyser = actx.createAnalyser(); analyser.fftSize=256;
+    var AC=window.AudioContext||window.webkitAudioContext; actx=new AC();
+    var src=actx.createMediaElementSource(audio);
+    analyser=actx.createAnalyser(); analyser.fftSize=256; analyserData=new Uint8Array(analyser.frequencyBinCount);
 
-    // Theremin chain: oscA+B -> mix -> lowpass -> envGain -> thAmp -> analyser -> destination
-    thMix    = actx.createGain();
-    thFilter = actx.createBiquadFilter(); thFilter.type='lowpass'; thFilter.frequency.value = parseFloat(bright.value);
-    envGain  = actx.createGain(); envGain.gain.value = 0.0; // start silent (touch-to-play)
-    thAmp    = actx.createGain(); thAmp.gain.value = parseFloat(tvolUI.value); // base master
+    // Theremin voice
+    thMix=actx.createGain();
+    thFilter=actx.createBiquadFilter(); thFilter.type='lowpass'; thFilter.frequency.value=parseFloat(bright.value);
+    envGain=actx.createGain(); envGain.gain.value=0.0; // press-only
+    thAmp=actx.createGain(); thAmp.gain.value=parseFloat(tvolUI.value);
 
-    oscA = actx.createOscillator(); oscA.type='sine';
-    oscB = actx.createOscillator(); oscB.type='sine';
+    oscA=actx.createOscillator(); oscA.type='sine';
+    oscB=actx.createOscillator(); oscB.type='sine';
+    lfoTrem=actx.createOscillator(); lfoTrem.type='sine'; lfoTremGain=actx.createGain();
+    lfoVib=actx.createOscillator(); lfoVib.type='sine'; lfoVibGain=actx.createGain();
 
-    // Tremolo (amplitude wobble)
-    lfoTrem = actx.createOscillator(); lfoTrem.type='sine';
-    lfoTremGain = actx.createGain();
-
-    // Vibrato (pitch wobble)
-    lfoVib = actx.createOscillator(); lfoVib.type='sine';
-    lfoVibGain = actx.createGain();
-
-    // Wiring
     oscA.connect(thMix); oscB.connect(thMix);
     thMix.connect(thFilter).connect(envGain).connect(thAmp).connect(analyser).connect(actx.destination);
-    var aFreq = oscA.frequency; var bFreq = oscB.frequency;
-    lfoVib.connect(lfoVibGain);
-    lfoVibGain.connect(aFreq); lfoVibGain.connect(bFreq);
-
+    lfoVib.connect(lfoVibGain); lfoVibGain.connect(oscA.detune); lfoVibGain.connect(oscB.detune);
     lfoTrem.connect(lfoTremGain).connect(thAmp.gain);
 
     src.connect(analyser);
 
-    // Start
     oscA.start(); oscB.start(); lfoTrem.start(); lfoVib.start();
 
-    // Init params
     updateDetune(); updateTrem(); updateVibrato(); updateBrightness();
   }
 
-  // Params
-  function updateDetune(){
-    if(!oscA||!oscB) return;
-    var cents = parseFloat(detuneUI.value||"7.5");
-    oscA.detune.value = -cents;
-    oscB.detune.value =  cents;
-  }
-  function updateTrem(){
-    if(!lfoTrem||!lfoTremGain||!thAmp||!actx) return;
-    var base = parseFloat(tvolUI.value);
-    var depth= parseFloat(tremUI.value);     // 0..1
-    var speed= parseFloat(tremSpd.value);    // Hz
-    lfoTrem.frequency.setTargetAtTime(speed, actx.currentTime, 0.05);
-    // depthはベース音量に対する割合で設定
-    lfoTremGain.gain.setTargetAtTime(base * depth * 0.6, actx.currentTime, 0.05);
-    thAmp.gain.setTargetAtTime(base, actx.currentTime, 0.05);
-  }
-  function updateVibrato(){
-    if(!lfoVib||!lfoVibGain||!actx) return;
-    var depthCents = parseFloat(vibDepth.value); // cents
-    var rateHz     = parseFloat(vibRate.value);
-    lfoVib.frequency.setTargetAtTime(rateHz, actx.currentTime, 0.05);
-    // cents -> Hz modulation via detune AudioParam (connect directly is in cents)
-    lfoVibGain.gain.setTargetAtTime(depthCents, actx.currentTime, 0.05);
-  }
-  function updateBrightness(){
-    if(!thFilter||!actx) return;
-    thFilter.frequency.setTargetAtTime(parseFloat(bright.value), actx.currentTime, 0.05);
-  }
+  // params
+  function updateDetune(){ if(!oscA||!oscB) return; var c=parseFloat(detuneUI.value||"7.5"); oscA.detune.value=-c; oscB.detune.value=c; }
+  function updateTrem(){ if(!lfoTrem||!lfoTremGain||!thAmp||!actx) return; var base=parseFloat(tvolUI.value), depth=parseFloat(tremUI.value), sp=parseFloat(tremSpd.value); lfoTrem.frequency.setTargetAtTime(sp,actx.currentTime,0.05); lfoTremGain.gain.setTargetAtTime(base*depth*0.6,actx.currentTime,0.05); thAmp.gain.setTargetAtTime(base,actx.currentTime,0.05); }
+  function updateVibrato(){ if(!lfoVib||!lfoVibGain||!actx) return; lfoVib.frequency.setTargetAtTime(parseFloat(vibRate.value),actx.currentTime,0.05); lfoVibGain.gain.setTargetAtTime(parseFloat(vibDepth.value),actx.currentTime,0.05); }
+  function updateBrightness(){ if(!thFilter||!actx) return; thFilter.frequency.setTargetAtTime(parseFloat(bright.value),actx.currentTime,0.05); }
   tvolUI.addEventListener('input', function(){ ensureAudio(); updateTrem(); });
   tremUI.addEventListener('input', function(){ ensureAudio(); updateTrem(); });
   tremSpd.addEventListener('input', function(){ ensureAudio(); updateTrem(); });
@@ -186,117 +135,113 @@
   vibRate.addEventListener('input', function(){ ensureAudio(); updateVibrato(); });
   bright.addEventListener('input', function(){ ensureAudio(); updateBrightness(); });
 
-  // BGM folder
+  // BGM
   function naturalSort(a,b){ return a.name.localeCompare(b.name,'ja',{numeric:true}); }
   document.getElementById('audDir').addEventListener('change', function(e){
     ensureAudio();
     audList = Array.prototype.slice.call(e.target.files).filter(function(f){return f.type.indexOf('audio/')===0;}).sort(naturalSort);
     audIdx=0; if(audList.length) playIndex(audIdx);
   });
-  function playIndex(i){
-    if(!audList.length) return;
-    audio.src = URL.createObjectURL(audList[i]);
-    ensureAudio();
-    try{ if(actx && actx.state!=='running') actx.resume(); audio.play(); }catch(e){}
-  }
+  function playIndex(i){ if(!audList.length) return; audio.src=URL.createObjectURL(audList[i]); ensureAudio(); try{ if(actx && actx.state!=='running') actx.resume(); audio.play(); }catch(_){ } }
   document.getElementById('next').addEventListener('click',function(){ if(!audList.length)return; audIdx=(audIdx+1)%audList.length; playIndex(audIdx); });
   document.getElementById('prev').addEventListener('click',function(){ if(!audList.length)return; audIdx=(audIdx-1+audList.length)%audList.length; playIndex(audIdx); });
-  document.getElementById('play').addEventListener('click', function(){
-    ensureAudio(); if(actx && actx.state!=='running') try{ actx.resume(); }catch(_){}
-    if(audio.paused){ try{ audio.play(); }catch(_){ } } else { audio.pause(); }
+  document.getElementById('play').addEventListener('click',function(){ ensureAudio(); if(actx && actx.state!=='running') try{actx.resume();}catch(_){ } if(audio.paused){ try{audio.play();}catch(_){ } } else { audio.pause(); } });
+  audio.addEventListener('ended', function(){ if(audList.length){ audIdx=(audIdx+1)%audList.length; playIndex(audIdx); } else { audio.currentTime=0; audio.play(); } });
+
+  // ===== interaction modes: pluck vs theremin =====
+  var pressStart=0, dragging=false;
+  var chime=new Audio("./Chime.mp3"); chime.volume=0.28;
+
+  cv.addEventListener('pointerdown', function(e){
+    ensureAudio();
+    pressStart=Date.now();
+    dragging=true;
+    // we don't start theremin yet; wait to see if it's a tap or long press
   });
-  audio.addEventListener('ended', function(){
-    if(audList.length){ audIdx=(audIdx+1)%audList.length; playIndex(audIdx); }
-    else { audio.currentTime=0; audio.play(); }
-  });
-
-  // ===== Canvas sizing
-  var dprCap=1.5;
-  function fit(){
-    var dpr=Math.min(window.devicePixelRatio||1, dprCap);
-    var vw = (window.visualViewport? visualViewport.width : window.innerWidth);
-    var vh = (window.visualViewport? visualViewport.height: window.innerHeight);
-    var w = Math.floor(vw * dpr), h = Math.floor(vh * dpr);
-    cv.width = Math.max(360, w);
-    cv.height = Math.max(360, h);
-  }
-  fit();
-  window.addEventListener('resize', fit, {passive:true});
-  if(window.visualViewport){ visualViewport.addEventListener('resize', fit, {passive:true}); }
-
-  // ===== Shapes
-  var COLORS = ["#A5F3FC","#FBCFE8","#FDE68A","#C7D2FE","#86EFAC"];
-  var TYPES = ["circle","triangle","square","star","heart"];
-  var shapes=[];
-  function starPath(r, spikes){ var p=new Path2D(); var step=Math.PI/spikes; p.moveTo(r,0); for(var i=0;i<spikes*2;i++){ var rr=(i%2===0)?r:r*0.45; var a=i*step; p.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);} p.closePath(); return p; }
-  function heartPath(r){ var p=new Path2D(); p.moveTo(0,-r*0.2); p.bezierCurveTo(r*0.9,-r*0.9, r*1.4,r*0.5, 0,r*1.2); p.bezierCurveTo(-r*1.4,r*0.5, -r*0.9,-r*0.9, 0,-r*0.2); return p; }
-  var starCache=new Map(), heartCache=new Map();
-  function getStar(r){ var k=r|0; if(!starCache.has(k)) starCache.set(k, starPath(k,5)); return starCache.get(k); }
-  function getHeart(r){ var k=r|0; if(!heartCache.has(k)) heartCache.set(k, heartPath(k)); return heartCache.get(k); }
-
-  function resetShapes(){
-    shapes.length=0;
-    var n=Math.max(3, (document.getElementById('count').value|0));
-    for(var i=0;i<n;i++){
-      var type=TYPES[i%TYPES.length];
-      var r=70*(0.6+Math.random()*0.6);
-      var x=Math.random()*cv.width, y=Math.random()*cv.height;
-      var rot=Math.random()*Math.PI*2;
-      var vx=(Math.random()-0.5)*0.5, vy=(Math.random()-0.5)*0.5;
-      var color=COLORS[i%COLORS.length];
-      shapes.push({type:type,x:x,y:y,r:r,rot:rot,vx:vx,vy:vy,pulse:0,color:color});
+  cv.addEventListener('pointermove', function(e){
+    if(!dragging) return;
+    if(Date.now()-pressStart>180){ // treat as theremin hold
+      onThereminDrag(e);
+      gateOn();
     }
-  }
-  document.getElementById('count').addEventListener('input', resetShapes);
-  resetShapes();
-
-  // ===== Touch-to-play: tap/drag gives attack; release gives soft release
-  var dragging=false;
-  cv.addEventListener('pointerdown', function(e){ dragging=true; ensureAudio(); onTouch(e); gateOn(); });
-  window.addEventListener('pointerup', function(){ dragging=false; gateOff(); });
-  cv.addEventListener('pointercancel', function(){ dragging=false; gateOff(); });
-  cv.addEventListener('pointermove', function(e){ if(dragging) onTouch(e); });
-
-  function onTouch(e){
+  });
+  function onThereminDrag(e){
     var r=cv.getBoundingClientRect();
-    var y=(e.clientY-r.top)/r.height; // 0..1
-    var beta=(y-0.5)*360;
-    setPitchFromBetaGamma(beta,0);
+    var y=(e.clientY-r.top)/r.height; var beta=(y-0.5)*360;
+    setPitchFromBeta(beta);
   }
-  function gateOn(){
-    if(!actx||!envGain) return;
-    var t=actx.currentTime;
-    envGain.gain.cancelScheduledValues(t);
-    envGain.gain.setTargetAtTime(0.0,t,0.005);
-    envGain.gain.setTargetAtTime(1.0,t+0.005,0.06); // Attack ~60ms
-  }
-  function gateOff(){
-    if(!actx||!envGain) return;
-    var t=actx.currentTime;
-    envGain.gain.cancelScheduledValues(t);
-    envGain.gain.setTargetAtTime(0.0,t,0.12); // Release ~120ms
+  window.addEventListener('pointerup', function(e){
+    if(!dragging) return;
+    dragging=false;
+    var dur=Date.now()-pressStart;
+    if(dur<=180){ // short tap => pluck + chime
+      doPluck(e);
+      try{ chime.currentTime=0; chime.play(); }catch(_){}
+      // small push for shapes
+      burst(e);
+    }else{ // long press end => release theremin
+      gateOff();
+    }
+  });
+  cv.addEventListener('pointercancel', function(){ dragging=false; gateOff(); });
+
+  // Pluck synth (one-shot)
+  function doPluck(e){
+    if(!actx) return;
+    var now=actx.currentTime;
+    // simple sine->triangle blend through gentle bandpass/lowpass
+    pluckOsc=actx.createOscillator(); pluckOsc.type='triangle';
+    var g=actx.createGain(); g.gain.value=0.0;
+    pluckFilter=actx.createBiquadFilter(); pluckFilter.type='lowpass'; pluckFilter.frequency.value=2200;
+    pluckOsc.connect(pluckFilter).connect(g).connect(actx.destination);
+    // set pitch near current theremin pitch
+    var f = window.pitchHz||440; pluckOsc.frequency.value=f;
+    // short env
+    g.gain.setValueAtTime(0,now);
+    g.gain.linearRampToValueAtTime(0.8, now+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, now+0.35);
+    pluckOsc.start(now); pluckOsc.stop(now+0.5);
   }
 
-  // ===== Pitch mapping (also drives filter brightness a bit)
-  function setPitchFromBetaGamma(beta, gamma){
-    var pmin=parseFloat(pminUI.value), pmax=parseFloat(pmaxUI.value);
-    var betaNorm=Math.min(1,Math.max(0,(beta+180)/360));
-    var curve=Math.sin(betaNorm*Math.PI);
-    window.pitchHz = pmin + curve*(pmax-pmin);
-    if(actx && oscA && oscB){
-      var t=actx.currentTime;
-      oscA.frequency.setTargetAtTime(window.pitchHz, t, 0.02);
-      oscB.frequency.setTargetAtTime(window.pitchHz, t, 0.02);
-    }
-    // slight brightness track with pitch
-    if(actx && thFilter){
-      var base = parseFloat(bright.value);
-      thFilter.frequency.setTargetAtTime(base * (0.8 + 0.6*curve), actx.currentTime, 0.08);
+  // burst shapes
+  function burst(e){
+    var rect=cv.getBoundingClientRect();
+    var px=(e.clientX-rect.left)/rect.width*cv.width;
+    var py=(e.clientY-rect.top)/rect.height*cv.height;
+    for(var i=0;i<shapes.length;i++){
+      var s=shapes[i];
+      var ang=Math.atan2(s.y-py, s.x-px);
+      var f=3.6+Math.random()*2.2;
+      s.vx += Math.cos(ang)*f; s.vy += Math.sin(ang)*f;
+      s.pulse = Math.min(1, s.pulse+1.0);
     }
   }
 
-  // ===== draw (bigger & smoother scaling) =====
-  var t=0, visScale=1;
+  // Theremin gate (hold)
+  function gateOn(){ if(!actx||!envGain) return; var t=actx.currentTime; envGain.gain.cancelScheduledValues(t); envGain.gain.setTargetAtTime(1.0,t,0.06); }
+  function gateOff(){ if(!actx||!envGain) return; var t=actx.currentTime; envGain.gain.cancelScheduledValues(t); envGain.gain.setTargetAtTime(0.0,t,0.12); }
+
+  // Pitch mapping + filter follow
+  function setPitchFromBeta(beta){ var pmin=parseFloat(pminUI.value), pmax=parseFloat(pmaxUI.value); var n=Math.min(1,Math.max(0,(beta+180)/360)); var curve=Math.sin(n*Math.PI); window.pitchHz = pmin + curve*(pmax-pmin); if(actx&&oscA&&oscB){ var t=actx.currentTime; oscA.frequency.setTargetAtTime(window.pitchHz,t,0.02); oscB.frequency.setTargetAtTime(window.pitchHz,t,0.02);} if(actx&&thFilter){ thFilter.frequency.setTargetAtTime(parseFloat(bright.value)*(0.8+0.6*curve),actx.currentTime,0.08);} }
+
+  // sensors optional
+  function ask(){ try{ if (window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission) DeviceOrientationEvent.requestPermission(); }catch(_){ } }
+  document.addEventListener('pointerdown', ask, {once:true});
+  window.addEventListener('deviceorientation', function(e){ if(e.beta==null) return; if(dragging && Date.now()-pressStart>180) return; setPitchFromBeta(e.beta); }, {passive:true});
+
+  // ===== visuals =====
+  var dprCap=1.5;
+  function fit(){ var dpr=Math.min(window.devicePixelRatio||1,dprCap); var vw=(visualViewport?visualViewport.width:innerWidth); var vh=(visualViewport?visualViewport.height:innerHeight); cv.width=Math.max(360,Math.floor(vw*dpr)); cv.height=Math.max(360,Math.floor(vh*dpr)); }
+  fit(); addEventListener('resize',fit,{passive:true}); if(window.visualViewport){ visualViewport.addEventListener('resize',fit,{passive:true}); }
+  var COLORS=["#A5F3FC","#FBCFE8","#FDE68A","#C7D2FE","#86EFAC"], TYPES=["circle","triangle","square","star","heart"], shapes=[];
+  function starPath(r,s){ var p=new Path2D(), st=Math.PI/s; p.moveTo(r,0); for(var i=0;i<s*2;i++){ var rr=(i%2===0)?r:r*0.45; var a=i*st; p.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);} p.closePath(); return p; }
+  function heartPath(r){ var p=new Path2D(); p.moveTo(0,-r*0.2); p.bezierCurveTo(r*0.9,-r*0.9, r*1.4,r*0.5, 0,r*1.2); p.bezierCurveTo(-r*1.4,r*0.5, -r*0.9,-r*0.9, 0,-r*0.2); return p; }
+  var starCache=new Map(), heartCache=new Map(); function getStar(r){ var k=r|0; if(!starCache.has(k)) starCache.set(k,starPath(k,5)); return starCache.get(k);} function getHeart(r){ var k=r|0; if(!heartCache.has(k)) heartCache.set(k,heartPath(k)); return heartCache.get(k); }
+  function reset(){ shapes.length=0; var n=Math.max(3,(countUI.value|0)); for(var i=0;i<n;i++){ var type=TYPES[i%TYPES.length], r=70*(0.6+Math.random()*0.6), x=Math.random()*cv.width, y=Math.random()*cv.height, rot=Math.random()*Math.PI*2, vx=(Math.random()-0.5)*0.5, vy=(Math.random()-0.5)*0.5, color=COLORS[i%COLORS.length]; shapes.push({type:type,x:x,y:y,r:r,rot:rot,vx:vx,vy:vy,pulse:0,color:color}); } }
+  countUI.addEventListener('input',reset); reset();
+
+  // draw loop with beat-reactive scale
+  var t=0, visScale=1, beatBoost=0;
   function draw(){
     var w=cv.width,h=cv.height;
     ctx.fillStyle="#1a1a1a"; ctx.fillRect(0,0,w,h);
@@ -304,53 +249,44 @@
     var glow=parseFloat(glowUI.value);
     var pmin=parseFloat(pminUI.value), pmax=parseFloat(pmaxUI.value);
     var pnorm=Math.min(1, Math.max(0, (window.pitchHz - pmin) / Math.max(1,(pmax-pmin)) ));
-    var targetScale = 0.5 + 1.1 * pnorm;
+
+    // beat from analyser (RMS of spectrum)
+    var add=0;
+    if(analyser && analyserData){
+      analyser.getByteFrequencyData(analyserData);
+      var sum=0; for(var i=0;i<analyserData.length;i++){ var v=analyserData[i]/255; sum+=v*v; }
+      var rms=Math.sqrt(sum/analyserData.length); // 0..1
+      // smooth
+      beatBoost += (rms - beatBoost)*0.08;
+      add = beatBoost * parseFloat(beatAmt.value); // 0..beatAmt
+    }
+
+    var targetScale = (0.5 + 1.1*pnorm) + add;
     visScale += (targetScale - visScale) * 0.15;
 
     for(var i=0;i<shapes.length;i++){
       var s=shapes[i];
       s.x+=s.vx; s.y+=s.vy; s.rot+=0.008;
-      if(s.x<s.r){ s.x=s.r; s.vx=Math.abs(s.vx); } if(s.x>w-s.r){ s.x=w-s.r; s.vx=-Math.abs(s.vx); }
-      if(s.y<s.r){ s.y=s.r; s.vy=Math.abs(s.vy); } if(s.y>h-s.r){ s.y=h-s.r; s.vy=-Math.abs(s.vy); }
+      if(s.x<s.r){s.x=s.r; s.vx=Math.abs(s.vx);} if(s.x>w-s.r){s.x=w-s.r; s.vx=-Math.abs(s.vx);}
+      if(s.y<s.r){s.y=s.r; s.vy=Math.abs(s.vy);} if(s.y>h-s.r){s.y=h-s.r; s.vy=-Math.abs(s.vy);}
       s.vx*=0.992; s.vy*=0.992;
-      var basePulse = 1 + 0.07*Math.sin(t*0.03 + s.x*0.003) + s.pulse*0.25;
-      var r2 = s.r * basePulse * visScale; s.pulse *= 0.92;
+      var base=1+0.07*Math.sin(t*0.03+s.x*0.003)+s.pulse*0.25;
+      var rr=s.r*base*visScale; s.pulse*=0.92;
       ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.rot);
       ctx.lineJoin="round"; ctx.lineCap="round";
-      ctx.shadowColor=s.color; ctx.shadowBlur=glow*2; ctx.strokeStyle=s.color; ctx.lineWidth=lineBase*2.4; drawShapeStroke(s.type,r2);
-      ctx.shadowBlur=glow; ctx.lineWidth=lineBase*1.5; drawShapeStroke(s.type,r2);
-      ctx.shadowBlur=glow*0.3; ctx.strokeStyle="#ffffff"; ctx.lineWidth=Math.max(1,lineBase*0.6); drawShapeStroke(s.type,r2);
+      ctx.shadowColor=s.color; ctx.shadowBlur=glow*2; ctx.strokeStyle=s.color; ctx.lineWidth=lineBase*2.4; drawShape(s.type,rr);
+      ctx.shadowBlur=glow; ctx.lineWidth=lineBase*1.5; drawShape(s.type,rr);
+      ctx.shadowBlur=glow*0.3; ctx.strokeStyle="#ffffff"; ctx.lineWidth=Math.max(1,lineBase*0.6); drawShape(s.type,rr);
       ctx.restore();
     }
     t++; requestAnimationFrame(draw);
   }
-  function drawShapeStroke(type,r){
-    if(type==="circle"){ ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke(); return; }
-    if(type==="triangle"){ ctx.beginPath(); var h=r*1.1; ctx.moveTo(0,-h); ctx.lineTo(h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.lineTo(-h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.closePath(); ctx.stroke(); return; }
-    if(type==="square"){ ctx.strokeRect(-r,-r,r*2,r*2); return; }
-    if(type==="star"){ var p=getStar(r); ctx.stroke(p); return; }
-    if(type==="heart"){ var p2=getHeart(r); ctx.stroke(p2); return; }
-  }
+  function drawShape(type,r){ if(type==="circle"){ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke(); return;} if(type==="triangle"){ctx.beginPath(); var h=r*1.1; ctx.moveTo(0,-h); ctx.lineTo(h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.lineTo(-h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.closePath(); ctx.stroke(); return;} if(type==="square"){ ctx.strokeRect(-r,-r,r*2,r*2); return;} if(type==="star"){ ctx.stroke(getStar(r)); return;} if(type==="heart"){ ctx.stroke(getHeart(r)); return;} }
   requestAnimationFrame(draw);
-
-  // sensors optional
-  function requestMotionPermission(){
-    try{
-      if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) DeviceMotionEvent.requestPermission();
-      if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) DeviceOrientationEvent.requestPermission();
-    }catch(_){}
-  }
-  document.addEventListener('pointerdown', requestMotionPermission, {once:true});
-  if (window.DeviceOrientationEvent){
-    window.addEventListener('deviceorientation', function(e){
-      if(e.beta==null||e.gamma==null) return;
-      setPitchFromBetaGamma(e.beta, e.gamma);
-    }, {passive:true});
-  }
 
 })();</script>
 <script>
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.5.2"); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.6.0"); }
 </script>
 </body>
 </html>
