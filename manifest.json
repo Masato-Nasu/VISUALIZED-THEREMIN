@@ -1,20 +1,18 @@
 {
-  "name": "Theremin PRO (Minimal UI)",
-  "short_name": "ThereminPRO",
-  "start_url": "./index.html?v=__VER__",
-  "scope": "./",
+  "name": "Baby Theremin Shapes",
+  "short_name": "BabyTheremin",
+  "start_url": "./index.html?v=1.4.0",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#0f1115",
-  "theme_color": "#0f1115",
+  "background_color": "#1a1a1a",
+  "theme_color": "#1a1a1a",
   "icons": [
     {
-      "src": "./icon-192.png?v=__VER__",
+      "src": "icon-192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "./icon-512.png?v=__VER__",
+      "src": "icon-512.png",
       "sizes": "512x512",
       "type": "image/png"
     }

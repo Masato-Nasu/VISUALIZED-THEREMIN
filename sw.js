@@ -1,15 +1,7 @@
-// sw.js PRO 20251018053401
-const CACHE="theremin-pro-20251018053401";
-const ASSETS=["./","./index.html?v=20251018053401","./manifest.json?v=20251018053401","./icon-192.png?v=20251018053401","./icon-512.png?v=20251018053401"];
-self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)))});
-self.addEventListener("activate",e=>{e.waitUntil((async()=>{const ks=await caches.keys();await Promise.all(ks.map(k=>k!==CACHE&&caches.delete(k)));await self.clients.claim();})())});
-self.addEventListener("fetch",e=>{
-  const r=e.request; const url=new URL(r.url);
-  if(r.method!=="GET") return;
-  if(url.origin!==location.origin) return;
-  const acc=r.headers.get("accept")||"";
-  if(acc.includes("audio")) return;
-  e.respondWith((async()=>{const c=await caches.open(CACHE);const hit=await c.match(r);
-    const fresh=fetch(r).then(res=>{if(res&&res.ok&&res.type!=="opaque") c.put(r,res.clone()); return res;}).catch(()=>hit);
-    return hit||fresh;})());
-});
+// sw.js v1.4.0
+const CACHE='baby-theremin-v1-4-0';
+const ASSETS=['./','./index.html?v=1.4.0','./manifest.json?v=1.4.0','./icon-192.png','./icon-512.png','./Chime.mp3'];
+self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))); self.skipWaiting();});
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))); self.clients.claim();});
+self.addEventListener('fetch',e=>{const req=e.request; if(req.mode==='navigate'){e.respondWith(fetch(req).catch(()=>caches.match('./index.html?v=1.4.0')));return;}
+  e.respondWith(caches.match(req).then(c=>c||fetch(req).then(r=>{const copy=r.clone(); caches.open(CACHE).then(cc=>cc.put(req,copy)); return r;})));});
