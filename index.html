@@ -12,36 +12,77 @@
     #kbFrame{ position:fixed; inset:0; width:100%; height:100%; border:0; }
     #panel{ position:fixed; right:16px; bottom:16px; width:min(520px,96vw); height:min(70vh,560px);
             background:#000; border:1px solid #2a2a33; border-radius:14px; overflow:hidden;
-            box-shadow:0 16px 48px rgba(0,0,0,.5); display:none; }
-    #drag{ position:absolute; inset:0 0 auto 0; height:24px; background:#111114; color:#9aa0a6; font:12px/24px ui-sans-serif; padding-left:10px; cursor:move; z-index:2; }
+            box-shadow:0 16px 48px rgba(0,0,0,.5); display:none; z-index:10; }
+    #drag{ position:absolute; inset:0 0 auto 0; height:24px; background:#111114; color:#9aa0a6; font:12px/24px ui-sans-serif; padding-left:10px; cursor:move; z-index:11; }
     #aerialFrame{ position:absolute; inset:24px 0 0 0; width:100%; height:calc(100% - 24px); border:0; background:#0b0d11; }
-    #hint{ position:fixed; right:10px; bottom:10px; font:600 12px ui-sans-serif; color:#cfd3ff; opacity:.85; background:#111114aa; padding:6px 8px; border-radius:10px; border:1px solid #2a2a33; }
-    .grabbing{ cursor:grabbing!important; }
+    #hint{ position:fixed; right:10px; bottom:10px; font:600 12px ui-sans-serif; color:#cfd3ff; opacity:.9; background:#111114cc; padding:6px 8px; border-radius:10px; border:1px solid #2a2a33; z-index:20; }
   </style>
 </head>
 <body>
-  <iframe id="kbFrame" src="./kb/index.html"></iframe>
+  <iframe id="kbFrame" src="./kb/index.html" allow="autoplay; fullscreen"></iframe>
   <div id="panel">
-    <div id="drag">AERIAL 操作パネル（二本指タッチで表示/非表示・ドラッグで移動）</div>
-    <iframe id="aerialFrame" src="./aerial/index.html"></iframe>
+    <div id="drag">AERIAL 操作パネル（二本指/長押しで表示切替・ドラッグで移動・Sキーでも可）</div>
+    <iframe id="aerialFrame" src="./aerial/index.html" allow="autoplay; microphone; fullscreen; clipboard-read; clipboard-write"></iframe>
   </div>
-  <div id="hint">✌ 二本指タッチで操作パネル</div>
+  <div id="hint">✌ 二本指タッチ／長押し（0.8秒）／Sキー でパネル表示</div>
+
   <script>
     if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js"); }
     const panel = document.getElementById('panel');
-    let last=0;
-    document.addEventListener('touchstart', (e)=>{
+    const hint = document.getElementById('hint');
+
+    function qs(name){ const m=new URL(location.href); return m.searchParams.get(name); }
+    function hashPanel(){ return /panel=(1|0)/.test(location.hash)? location.hash.match(/panel=(1|0)/)[1] : null; }
+
+    function setPanel(show){
+      panel.style.display = show ? "block" : "none";
+      hint.style.opacity = show ? 0.6 : 0.9;
+    }
+    function toggle(){ setPanel(panel.style.display!=="block"); }
+
+    // Initial show/hide policy
+    (function init(){
+      const q=qs("panel"); const h=hashPanel();
+      if(q==="1" || h==="1"){ setPanel(true); return; }
+      if(q==="0" || h==="0"){ setPanel(false); return; }
+      // First load: show, then auto-hide
+      setPanel(true);
+      setTimeout(()=>setPanel(false), 6000);
+    })();
+
+    // Two-finger toggle with cooldown
+    let lastTF=0;
+    document.addEventListener('touchstart', e => {
       const now=performance.now();
-      if(e.touches && e.touches.length>=2 && now-last>500){ last=now; panel.style.display = (panel.style.display==="block")? "none":"block"; }
+      if(e.touches && e.touches.length>=2 && now-lastTF>500){
+        lastTF=now; toggle();
+      }
     }, {passive:true});
-    // Drag
+
+    // Long-press (0.8s) one finger
+    (function(){
+      let t0=0, timer=null;
+      document.addEventListener('touchstart', e=>{
+        if(e.touches && e.touches.length===1){
+          t0=performance.now();
+          timer=setTimeout(()=>{ toggle(); }, 800);
+        }
+      }, {passive:true});
+      document.addEventListener('touchend', ()=>{ if(timer){ clearTimeout(timer); timer=null; } });
+      document.addEventListener('touchmove', ()=>{ if(timer){ clearTimeout(timer); timer=null; } });
+    })();
+
+    // Keyboard toggle (desktop)
+    document.addEventListener('keydown', e=>{ if(e.key==='s' || e.key==='S'){ toggle(); } });
+
+    // Drag panel
     (function(){
       const drag=document.getElementById('drag');
       let sx=0, sy=0, ox=0, oy=0, on=false;
       drag.addEventListener('pointerdown', (e)=>{
         on=true; drag.setPointerCapture(e.pointerId);
         const r=panel.getBoundingClientRect(); ox=r.left; oy=r.top; sx=e.clientX; sy=e.clientY;
-        document.body.classList.add('grabbing');
+        document.body.style.cursor='grabbing';
       });
       drag.addEventListener('pointermove', (e)=>{
         if(!on) return;
@@ -50,8 +91,8 @@
         panel.style.top=Math.max(8, Math.min(window.innerHeight-panel.offsetHeight-8, oy+dy))+"px";
         panel.style.right="auto"; panel.style.bottom="auto";
       });
-      drag.addEventListener('pointerup', ()=>{ on=false; document.body.classList.remove('grabbing'); });
-      drag.addEventListener('pointercancel', ()=>{ on=false; document.body.classList.remove('grabbing'); });
+      const end=()=>{ on=false; document.body.style.cursor=''; };
+      drag.addEventListener('pointerup', end); drag.addEventListener('pointercancel', end);
     })();
   </script>
 </body>
