@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
-<title>Baby Theremin Shapes — v1.6.0</title>
-<link rel="manifest" href="./manifest.json?v=1.6.0">
+<title>Baby Theremin Shapes — v1.6.2</title>
+<link rel="manifest" href="./manifest.json?v=1.6.2">
 <meta name="theme-color" content="#1a1a1a">
 <style>
   :root{ --bg:#1a1a1a; --panel:#20232bcc; --text:#E8EAF2; --muted:#8b90a1; }
   html,body{ height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Roboto,"Noto Sans JP",sans-serif; overscroll-behavior:none; }
-  #cv{ position:fixed; inset:0; width:100vw; height:100dvh; display:block; touch-action:none; background:var(--bg); }
+  #cv{ position:fixed; inset:0; width:100vw; height:100svh; display:block; touch-action:none; background:var(--bg); }
   .controls{ position:fixed; left:0; right:0; bottom:0; padding:12px; display:flex; flex-wrap:wrap; gap:10px; justify-content:center; align-items:center;
     background:var(--panel); backdrop-filter:saturate(1.05) blur(6px); border-top-left-radius:16px; border-top-right-radius:16px;
     transition:opacity .2s ease, visibility .2s ease, transform .2s ease; transform:translateY(8px) }
@@ -26,7 +26,7 @@
 </head>
 <body>
 <canvas id="cv"></canvas>
-<div class="hint" id="hint">👶 軽くタッチ＝ポン（チャイム）／長押しドラッグ＝テルミン</div>
+<div class="hint" id="hint">👶 軽タップ＝ポン（はじける）／長押しドラッグ＝テルミン（v1.6.2）</div>
 <div class="controls hidden" id="controls">
   <button id="closePanel" class="closer">× とじる</button>
   <label class="btn">🎵 おんがくフォルダ<input id="audDir" type="file" webkitdirectory directory multiple accept="audio/*" hidden></label>
@@ -62,15 +62,28 @@
 
   window.pitchHz=440;
 
-  // ===== panel controls (two-finger 1.2s / triple tap / button) =====
+  // ===== canvas sizing (robust) =====
+  var dprCap=1.5;
+  function fitNow(){
+    var dpr=Math.min(window.devicePixelRatio||1,dprCap);
+    var vw=(window.visualViewport&&visualViewport.width?visualViewport.width:innerWidth);
+    var vh=(window.visualViewport&&visualViewport.height?visualViewport.height:innerHeight);
+    var w=Math.floor(vw*dpr), h=Math.floor(vh*dpr);
+    if(w>0 && h>0){ cv.width=Math.max(360,w); cv.height=Math.max(360,h); return true; }
+    return false;
+  }
+  function fitEnsure(){ if(!fitNow()){ var id=setInterval(function(){ if(fitNow()){ clearInterval(id); if(shapes.length===0) reset(); } }, 50); } else { if(shapes.length===0) reset(); } }
+  fitEnsure();
+  addEventListener('resize',fitEnsure,{passive:true});
+  addEventListener('orientationchange',fitEnsure,{passive:true});
+  if(window.visualViewport){ visualViewport.addEventListener('resize',fitEnsure,{passive:true}); }
+
+  // ===== panel toggle =====
   var activePointers=new Map(); var holdTimer=null;
   function togglePanel(){ controls.classList.toggle('hidden'); }
   function clearPointers(){ activePointers.clear(); if(holdTimer){clearTimeout(holdTimer); holdTimer=null;} }
-  function onPointerDownForMenu(e){
-    activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
-    if(activePointers.size>=2 && !holdTimer){ holdTimer=setTimeout(togglePanel,1200); }
-  }
-  function onPointerMoveForMenu(e){ var p=activePointers.get(e.pointerId); if(!p) return; if(Math.abs(e.clientX-p.x)>20 || Math.abs(e.clientY-p.y)>20){ clearPointers(); } }
+  function onPointerDownForMenu(e){ activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(activePointers.size>=2&&!holdTimer){ holdTimer=setTimeout(togglePanel,1200);} }
+  function onPointerMoveForMenu(e){ var p=activePointers.get(e.pointerId); if(!p) return; if(Math.abs(e.clientX-p.x)>20||Math.abs(e.clientY-p.y)>20) clearPointers(); }
   function onPointerUpForMenu(){ clearPointers(); }
   cv.addEventListener('pointerdown',onPointerDownForMenu,{passive:false});
   cv.addEventListener('pointermove',onPointerMoveForMenu,{passive:false});
@@ -86,12 +99,12 @@
     if(hint && hint.parentNode) hint.parentNode.removeChild(hint);
   }, {once:true});
 
-  // ===== audio chain =====
+  // ===== audio =====
   var audList=[], audIdx=0, audio=new Audio(); audio.preload="auto";
   var actx=null, analyser=null, analyserData=null;
   var thMix=null, thFilter=null, thAmp=null, oscA=null, oscB=null, lfoTrem=null, lfoTremGain=null, lfoVib=null, lfoVibGain=null;
-  var envGain=null; // for theremin gate
-  var pluckEnv=null, pluckOsc=null, pluckFilter=null; // for pluck
+  var envGain=null;
+  var pluckOsc=null, pluckFilter=null;
 
   function ensureAudio(){
     if(actx) return;
@@ -99,12 +112,10 @@
     var src=actx.createMediaElementSource(audio);
     analyser=actx.createAnalyser(); analyser.fftSize=256; analyserData=new Uint8Array(analyser.frequencyBinCount);
 
-    // Theremin voice
     thMix=actx.createGain();
     thFilter=actx.createBiquadFilter(); thFilter.type='lowpass'; thFilter.frequency.value=parseFloat(bright.value);
-    envGain=actx.createGain(); envGain.gain.value=0.0; // press-only
+    envGain=actx.createGain(); envGain.gain.value=0.0;
     thAmp=actx.createGain(); thAmp.gain.value=parseFloat(tvolUI.value);
-
     oscA=actx.createOscillator(); oscA.type='sine';
     oscB=actx.createOscillator(); oscB.type='sine';
     lfoTrem=actx.createOscillator(); lfoTrem.type='sine'; lfoTremGain=actx.createGain();
@@ -114,7 +125,6 @@
     thMix.connect(thFilter).connect(envGain).connect(thAmp).connect(analyser).connect(actx.destination);
     lfoVib.connect(lfoVibGain); lfoVibGain.connect(oscA.detune); lfoVibGain.connect(oscB.detune);
     lfoTrem.connect(lfoTremGain).connect(thAmp.gain);
-
     src.connect(analyser);
 
     oscA.start(); oscB.start(); lfoTrem.start(); lfoVib.start();
@@ -122,7 +132,6 @@
     updateDetune(); updateTrem(); updateVibrato(); updateBrightness();
   }
 
-  // params
   function updateDetune(){ if(!oscA||!oscB) return; var c=parseFloat(detuneUI.value||"7.5"); oscA.detune.value=-c; oscB.detune.value=c; }
   function updateTrem(){ if(!lfoTrem||!lfoTremGain||!thAmp||!actx) return; var base=parseFloat(tvolUI.value), depth=parseFloat(tremUI.value), sp=parseFloat(tremSpd.value); lfoTrem.frequency.setTargetAtTime(sp,actx.currentTime,0.05); lfoTremGain.gain.setTargetAtTime(base*depth*0.6,actx.currentTime,0.05); thAmp.gain.setTargetAtTime(base,actx.currentTime,0.05); }
   function updateVibrato(){ if(!lfoVib||!lfoVibGain||!actx) return; lfoVib.frequency.setTargetAtTime(parseFloat(vibRate.value),actx.currentTime,0.05); lfoVibGain.gain.setTargetAtTime(parseFloat(vibDepth.value),actx.currentTime,0.05); }
@@ -148,119 +157,126 @@
   document.getElementById('play').addEventListener('click',function(){ ensureAudio(); if(actx && actx.state!=='running') try{actx.resume();}catch(_){ } if(audio.paused){ try{audio.play();}catch(_){ } } else { audio.pause(); } });
   audio.addEventListener('ended', function(){ if(audList.length){ audIdx=(audIdx+1)%audList.length; playIndex(audIdx); } else { audio.currentTime=0; audio.play(); } });
 
-  // ===== interaction modes: pluck vs theremin =====
+  // ===== interaction: short tap vs long press =====
   var pressStart=0, dragging=false;
-  var chime=new Audio("./Chime.mp3"); chime.volume=0.28;
+  var lastPos={x:null,y:null}; // track last known position (canvas coordinates)
+  var chime=new Audio("./Chime.mp3"); chime.volume=0.3;
 
   cv.addEventListener('pointerdown', function(e){
     ensureAudio();
     pressStart=Date.now();
     dragging=true;
-    // we don't start theremin yet; wait to see if it's a tap or long press
+    updateLastPos(e);
   });
   cv.addEventListener('pointermove', function(e){
     if(!dragging) return;
-    if(Date.now()-pressStart>180){ // treat as theremin hold
+    updateLastPos(e);
+    if(Date.now()-pressStart>180){ // theremin hold
       onThereminDrag(e);
       gateOn();
     }
   });
   function onThereminDrag(e){
-    var r=cv.getBoundingClientRect();
-    var y=(e.clientY-r.top)/r.height; var beta=(y-0.5)*360;
+    var p=getCanvasPos(e); if(!p) return;
+    var beta=(p.y/cv.height - 0.5)*360;
     setPitchFromBeta(beta);
   }
+  function updateLastPos(e){
+    var p=getCanvasPos(e);
+    if(p){ lastPos=p; }
+  }
+  function getCanvasPos(e){
+    var rect=cv.getBoundingClientRect();
+    var x=(e.clientX-rect.left)/rect.width*cv.width;
+    var y=(e.clientY-rect.top)/rect.height*cv.height;
+    if(isFinite(x)&&isFinite(y)) return {x:x,y:y};
+    return null;
+  }
+
   window.addEventListener('pointerup', function(e){
     if(!dragging) return;
     dragging=false;
     var dur=Date.now()-pressStart;
-    if(dur<=180){ // short tap => pluck + chime
-      doPluck(e);
+    if(dur<=180){ // short tap => pluck + chime + burst
+      doPluck();
       try{ chime.currentTime=0; chime.play(); }catch(_){}
-      // small push for shapes
-      burst(e);
-    }else{ // long press end => release theremin
+      doBurst(e);
+    }else{
       gateOff();
     }
   });
   cv.addEventListener('pointercancel', function(){ dragging=false; gateOff(); });
 
-  // Pluck synth (one-shot)
-  function doPluck(e){
+  // Pluck
+  function doPluck(){
     if(!actx) return;
     var now=actx.currentTime;
-    // simple sine->triangle blend through gentle bandpass/lowpass
     pluckOsc=actx.createOscillator(); pluckOsc.type='triangle';
     var g=actx.createGain(); g.gain.value=0.0;
-    pluckFilter=actx.createBiquadFilter(); pluckFilter.type='lowpass'; pluckFilter.frequency.value=2200;
+    pluckFilter=actx.createBiquadFilter(); pluckFilter.type='lowpass'; pluckFilter.frequency.value=2400;
     pluckOsc.connect(pluckFilter).connect(g).connect(actx.destination);
-    // set pitch near current theremin pitch
-    var f = window.pitchHz||440; pluckOsc.frequency.value=f;
-    // short env
+    var f=window.pitchHz||440; pluckOsc.frequency.value=f;
     g.gain.setValueAtTime(0,now);
-    g.gain.linearRampToValueAtTime(0.8, now+0.01);
+    g.gain.linearRampToValueAtTime(0.9, now+0.01);
     g.gain.exponentialRampToValueAtTime(0.0001, now+0.35);
     pluckOsc.start(now); pluckOsc.stop(now+0.5);
   }
 
-  // burst shapes
-  function burst(e){
-    var rect=cv.getBoundingClientRect();
-    var px=(e.clientX-rect.left)/rect.width*cv.width;
-    var py=(e.clientY-rect.top)/rect.height*cv.height;
+  // ===== shapes =====
+  var COLORS=["#A5F3FC","#FBCFE8","#FDE68A","#C7D2FE","#86EFAC"], TYPES=["circle","triangle","square","star","heart"], shapes=[];
+  function starPath(r,s){ var p=new Path2D(), st=Math.PI/s; p.moveTo(r,0); for(var i=0;i<s*2;i++){ var rr=(i%2===0)?r:r*0.45; var a=i*st; p.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);} p.closePath(); return p; }
+  function heartPath(r){ var p=new Path2D(); p.moveTo(0,-r*0.2); p.bezierCurveTo(r*0.9,-r*0.9, r*1.4,r*0.5, 0,r*1.2); p.bezierCurveTo(-r*1.4,r*0.5, -r*0.9,-r*0.9, 0,-r*0.2); return p; }
+  var starCache=new Map(), heartCache=new Map(); function getStar(r){ var k=r|0; if(!starCache.has(k)) starCache.set(k,starPath(k,5)); return starCache.get(k);} function getHeart(r){ var k=r|0; if(!heartCache.has(k)) heartCache.set(k,heartPath(k)); return heartCache.get(k); }
+  function reset(){ shapes.length=0; var n=Math.max(3,(countUI.value|0)); for(var i=0;i<n;i++){ var type=TYPES[i%TYPES.length], r=70*(0.6+Math.random()*0.6), x=Math.random()*cv.width, y=Math.random()*cv.height, rot=Math.random()*Math.PI*2, vx=(Math.random()-0.5)*0.5, vy=(Math.random()-0.5)*0.5, color=COLORS[i%COLORS.length]; shapes.push({type:type,x:x,y:y,r:r,rot:rot,vx:vx,vy:vy,pulse:0,color:color,flash:0}); } }
+  document.getElementById('count').addEventListener('input', reset);
+
+  // Burst (stronger + flash)
+  function doBurst(e){
+    var p=getCanvasPos(e) || lastPos;
+    if(!p) return;
+    var px=p.x, py=p.y;
     for(var i=0;i<shapes.length;i++){
       var s=shapes[i];
       var ang=Math.atan2(s.y-py, s.x-px);
-      var f=3.6+Math.random()*2.2;
+      var f=4.5 + Math.random()*3.0; // stronger push
       s.vx += Math.cos(ang)*f; s.vy += Math.sin(ang)*f;
-      s.pulse = Math.min(1, s.pulse+1.0);
+      s.pulse = Math.min(1.5, s.pulse+1.2);
+      s.flash = 1.0; // white flash overlay
     }
   }
 
-  // Theremin gate (hold)
+  // Theremin gate
   function gateOn(){ if(!actx||!envGain) return; var t=actx.currentTime; envGain.gain.cancelScheduledValues(t); envGain.gain.setTargetAtTime(1.0,t,0.06); }
   function gateOff(){ if(!actx||!envGain) return; var t=actx.currentTime; envGain.gain.cancelScheduledValues(t); envGain.gain.setTargetAtTime(0.0,t,0.12); }
 
   // Pitch mapping + filter follow
   function setPitchFromBeta(beta){ var pmin=parseFloat(pminUI.value), pmax=parseFloat(pmaxUI.value); var n=Math.min(1,Math.max(0,(beta+180)/360)); var curve=Math.sin(n*Math.PI); window.pitchHz = pmin + curve*(pmax-pmin); if(actx&&oscA&&oscB){ var t=actx.currentTime; oscA.frequency.setTargetAtTime(window.pitchHz,t,0.02); oscB.frequency.setTargetAtTime(window.pitchHz,t,0.02);} if(actx&&thFilter){ thFilter.frequency.setTargetAtTime(parseFloat(bright.value)*(0.8+0.6*curve),actx.currentTime,0.08);} }
 
-  // sensors optional
+  // Optional sensors
   function ask(){ try{ if (window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission) DeviceOrientationEvent.requestPermission(); }catch(_){ } }
   document.addEventListener('pointerdown', ask, {once:true});
   window.addEventListener('deviceorientation', function(e){ if(e.beta==null) return; if(dragging && Date.now()-pressStart>180) return; setPitchFromBeta(e.beta); }, {passive:true});
 
-  // ===== visuals =====
-  var dprCap=1.5;
-  function fit(){ var dpr=Math.min(window.devicePixelRatio||1,dprCap); var vw=(visualViewport?visualViewport.width:innerWidth); var vh=(visualViewport?visualViewport.height:innerHeight); cv.width=Math.max(360,Math.floor(vw*dpr)); cv.height=Math.max(360,Math.floor(vh*dpr)); }
-  fit(); addEventListener('resize',fit,{passive:true}); if(window.visualViewport){ visualViewport.addEventListener('resize',fit,{passive:true}); }
-  var COLORS=["#A5F3FC","#FBCFE8","#FDE68A","#C7D2FE","#86EFAC"], TYPES=["circle","triangle","square","star","heart"], shapes=[];
-  function starPath(r,s){ var p=new Path2D(), st=Math.PI/s; p.moveTo(r,0); for(var i=0;i<s*2;i++){ var rr=(i%2===0)?r:r*0.45; var a=i*st; p.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);} p.closePath(); return p; }
-  function heartPath(r){ var p=new Path2D(); p.moveTo(0,-r*0.2); p.bezierCurveTo(r*0.9,-r*0.9, r*1.4,r*0.5, 0,r*1.2); p.bezierCurveTo(-r*1.4,r*0.5, -r*0.9,-r*0.9, 0,-r*0.2); return p; }
-  var starCache=new Map(), heartCache=new Map(); function getStar(r){ var k=r|0; if(!starCache.has(k)) starCache.set(k,starPath(k,5)); return starCache.get(k);} function getHeart(r){ var k=r|0; if(!heartCache.has(k)) heartCache.set(k,heartPath(k)); return heartCache.get(k); }
-  function reset(){ shapes.length=0; var n=Math.max(3,(countUI.value|0)); for(var i=0;i<n;i++){ var type=TYPES[i%TYPES.length], r=70*(0.6+Math.random()*0.6), x=Math.random()*cv.width, y=Math.random()*cv.height, rot=Math.random()*Math.PI*2, vx=(Math.random()-0.5)*0.5, vy=(Math.random()-0.5)*0.5, color=COLORS[i%COLORS.length]; shapes.push({type:type,x:x,y:y,r:r,rot:rot,vx:vx,vy:vy,pulse:0,color:color}); } }
-  countUI.addEventListener('input',reset); reset();
-
   // draw loop with beat-reactive scale
   var t=0, visScale=1, beatBoost=0;
+  var lineBase, glow;
   function draw(){
     var w=cv.width,h=cv.height;
     ctx.fillStyle="#1a1a1a"; ctx.fillRect(0,0,w,h);
-    var lineBase=parseFloat(thickUI.value);
-    var glow=parseFloat(glowUI.value);
+    lineBase=parseFloat(thickUI.value);
+    glow=parseFloat(glowUI.value);
     var pmin=parseFloat(pminUI.value), pmax=parseFloat(pmaxUI.value);
     var pnorm=Math.min(1, Math.max(0, (window.pitchHz - pmin) / Math.max(1,(pmax-pmin)) ));
 
-    // beat from analyser (RMS of spectrum)
     var add=0;
-    if(analyser && analyserData){
-      analyser.getByteFrequencyData(analyserData);
-      var sum=0; for(var i=0;i<analyserData.length;i++){ var v=analyserData[i]/255; sum+=v*v; }
-      var rms=Math.sqrt(sum/analyserData.length); // 0..1
-      // smooth
+    if(analyser){
+      var data=new Uint8Array(analyser.frequencyBinCount);
+      analyser.getByteFrequencyData(data);
+      var sum=0; for(var i=0;i<data.length;i++){ var v=data[i]/255; sum+=v*v; }
+      var rms=Math.sqrt(sum/data.length);
       beatBoost += (rms - beatBoost)*0.08;
-      add = beatBoost * parseFloat(beatAmt.value); // 0..beatAmt
+      add = beatBoost * parseFloat(beatAmt.value);
     }
-
     var targetScale = (0.5 + 1.1*pnorm) + add;
     visScale += (targetScale - visScale) * 0.15;
 
@@ -274,6 +290,8 @@
       var rr=s.r*base*visScale; s.pulse*=0.92;
       ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.rot);
       ctx.lineJoin="round"; ctx.lineCap="round";
+      // flash overlay (decays quickly)
+      var flashAlpha = s.flash; if(flashAlpha>0){ ctx.fillStyle='rgba(255,255,255,'+(0.25*flashAlpha)+')'; if(s.type==='square'){ ctx.fillRect(-rr,-rr,rr*2,rr*2);} else { ctx.beginPath(); if(s.type==='circle'){ ctx.arc(0,0,rr,0,Math.PI*2);} else if(s.type==='triangle'){ var h2=rr*1.1; ctx.moveTo(0,-h2); ctx.lineTo(h2*Math.sin(Math.PI/3),h2*Math.cos(Math.PI/3)); ctx.lineTo(-h2*Math.sin(Math.PI/3),h2*Math.cos(Math.PI/3)); ctx.closePath(); } else if(s.type==='star'){ ctx.stroke(getStar(rr)); } else if(s.type==='heart'){ ctx.stroke(getHeart(rr)); } ctx.fill(); } s.flash*=0.85; }
       ctx.shadowColor=s.color; ctx.shadowBlur=glow*2; ctx.strokeStyle=s.color; ctx.lineWidth=lineBase*2.4; drawShape(s.type,rr);
       ctx.shadowBlur=glow; ctx.lineWidth=lineBase*1.5; drawShape(s.type,rr);
       ctx.shadowBlur=glow*0.3; ctx.strokeStyle="#ffffff"; ctx.lineWidth=Math.max(1,lineBase*0.6); drawShape(s.type,rr);
@@ -286,7 +304,7 @@
 
 })();</script>
 <script>
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.6.0"); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.6.2"); }
 </script>
 </body>
 </html>
