@@ -1,20 +1,9 @@
-// app.js — KB screen (visual-only UI) + AERIAL-like audio (minimal change)
+// app.js — KB screen + AERIAL-like audio + two-finger overlay toggle
 let audioCtx, master, thereminGain, osc, analyser, data, dest, rec, recChunks=[];
 let bgmAudio = null;
 let started=false;
-const P = {
-  // AERIAL-like defaults
-  freqMin: 120, freqMax: 1800,
-  gainMin: 0.0, gainMax: 0.85,
-  smooth: 0.12,
-  chimeGain: 0.7
-};
-const S = {
-  fT: 440, fC: 440,
-  gT: 0, gC: 0,
-  pointer:false, px:0.5, py:0.5,
-  lastShake: 0
-};
+const P = { freqMin:120, freqMax:1800, gainMin:0.0, gainMax:0.85, smooth:0.12, chimeGain:0.7 };
+const S = { fT:440, fC:440, gT:0, gC:0, pointer:false, px:0.5, py:0.5, lastShake:0, lastToggle:0 };
 
 function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
 function lerp(a,b,t){ return a+(b-a)*t; }
@@ -24,30 +13,16 @@ async function boot(){
   if(started) return;
   audioCtx = new (window.AudioContext||window.webkitAudioContext)();
   master = audioCtx.createGain(); master.gain.value = 0.9; master.connect(audioCtx.destination);
-
   thereminGain = audioCtx.createGain(); thereminGain.gain.value = 0; thereminGain.connect(master);
-
   osc = audioCtx.createOscillator(); osc.type="sine"; osc.frequency.value=440; osc.connect(thereminGain); osc.start();
-
   analyser = audioCtx.createAnalyser(); analyser.fftSize = 512; data = new Uint8Array(analyser.frequencyBinCount); master.connect(analyser);
-
   dest = audioCtx.createMediaStreamDestination(); master.connect(dest);
   rec = new MediaRecorder(dest.stream);
   rec.ondataavailable = e=>{ if(e.data.size>0) recChunks.push(e.data); };
-  rec.onstop = ()=>{
-    const blob = new Blob(recChunks,{type:"audio/webm"}); recChunks=[];
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href=url; a.download=`kbxaerial-${Date.now()}.webm`; a.click();
-    setTimeout(()=>URL.revokeObjectURL(url),10000);
-  };
-
+  rec.onstop = ()=>{ const blob=new Blob(recChunks,{type:"audio/webm"}); recChunks=[]; const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=`kbxaerial-${Date.now()}.webm`; a.click(); setTimeout(()=>URL.revokeObjectURL(url),10000); };
   // iOS permission prompts
-  if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function"){
-    try{ await DeviceOrientationEvent.requestPermission(); }catch{}
-  }
-  if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function"){
-    try{ await DeviceMotionEvent.requestPermission(); }catch{}
-  }
+  if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function"){ try{ await DeviceOrientationEvent.requestPermission(); }catch{} }
+  if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function"){ try{ await DeviceMotionEvent.requestPermission(); }catch{} }
   started=true;
 }
 
@@ -64,11 +39,8 @@ function chime(){
 
 function setBgm(file){
   if(!file) return;
-  if(!bgmAudio){
-    bgmAudio = new Audio();
-    bgmAudio.loop = true;
-  }
-  bgmAudio.src = URL.createObjectURL(file);
+  if(!bgmAudio){ bgmAudio=new Audio(); bgmAudio.loop=true; }
+  bgmAudio.src=URL.createObjectURL(file);
   bgmAudio.play();
 }
 
@@ -86,11 +58,10 @@ addEventListener("pointerup", onPointer);
 addEventListener("pointerleave", onPointer);
 
 function mapOrientation(beta,gamma){
-  // AERIALの方針を踏襲：β(ピッチ)は 1-cos で360度端の段差を解消、γ(ロール)はsinで自然なボリューム
-  const br = (beta||0)*Math.PI/180;
-  const pitch01 = clamp((1-Math.cos(br))/2,0,1);
-  const gr = (gamma||0)*Math.PI/180;
-  const vol01 = (Math.sin(gr)+1)/2;
+  const br=(beta||0)*Math.PI/180;
+  const pitch01=clamp((1-Math.cos(br))/2,0,1);
+  const gr=(gamma||0)*Math.PI/180;
+  const vol01=(Math.sin(gr)+1)/2;
   return {pitch01, vol01};
 }
 function onOrient(e){
@@ -117,7 +88,17 @@ function toggleRec(){
   if(rec.state==="recording"){ rec.stop(); } else { recChunks=[]; rec.start(); }
 }
 
-// ---- KB Visual (square, radial wedges; kept simple, no UI) ----
+// ---- Two-finger gesture to toggle overlay ----
+function maybeToggleOverlay(e){
+  const now = performance.now();
+  if(e.touches && e.touches.length>=2 && now - S.lastToggle > 500){
+    S.lastToggle = now;
+    hint.classList.toggle("hidden");
+  }
+}
+document.addEventListener("touchstart", maybeToggleOverlay, {passive:true});
+
+// ---- KB Visual ----
 let canvas, ctx, off, dpr=1;
 let K={t:0};
 function initCanvas(){
@@ -138,26 +119,19 @@ function draw(){
   if(started) analyser.getByteFrequencyData(data);
   let sum=0; for(let i=0;i<(data?data.length:0);i++) sum+=data[i];
   const energy = data? sum/(data.length*255) : 0;
-
-  // Smooth to targets (AERIAL smooth)
   if(started){
-    const t = clamp(P.smooth, 0.05, 0.6);
-    S.fC = lerp(S.fC, S.fT, t);
-    S.gC = lerp(S.gC, S.gT, t);
-    osc.frequency.setValueAtTime(S.fC, audioCtx.currentTime);
-    thereminGain.gain.setValueAtTime(S.gC, audioCtx.currentTime);
+    const t=clamp(P.smooth,0.05,0.6);
+    S.fC = lerp(S.fC,S.fT,t);
+    S.gC = lerp(S.gC,S.gT,t);
+    osc.frequency.setValueAtTime(S.fC,audioCtx.currentTime);
+    thereminGain.gain.setValueAtTime(S.gC,audioCtx.currentTime);
   }
-
-  // KB-like: crisp square, radial geometry, modest motion
   ctx.clearRect(0,0,off.width,off.height);
-  // background
   ctx.fillStyle="#0b0c10"; ctx.fillRect(0,0,off.width,off.height);
-
   const cx=off.width/2, cy=off.height/2;
   const R=Math.min(off.width,off.height)*0.5;
   const slices=16;
   K.t += 0.004 + energy*0.02;
-
   for(let i=0;i<slices;i++){
     const a0=(i/slices)*Math.PI*2 + K.t*0.7;
     const a1=((i+1)/slices)*Math.PI*2 + K.t*0.7;
@@ -174,8 +148,7 @@ function draw(){
     ctx.fillStyle=`rgba(${160+Math.sin(i*1.1)*40|0}, ${170+Math.sin(i*0.9+1.2)*35|0}, 245, ${alpha})`;
     ctx.fill();
   }
-
-  const gctx = document.getElementById("canvas").getContext("2d");
+  const gctx=document.getElementById("canvas").getContext("2d");
   gctx.clearRect(0,0,canvas.width,canvas.height);
   gctx.drawImage(off,0,0);
 }
@@ -185,12 +158,9 @@ document.addEventListener("DOMContentLoaded",()=>{
   draw();
   window.addEventListener("deviceorientation", onOrient);
   window.addEventListener("devicemotion", onMotion);
-
   document.getElementById("start").addEventListener("click", start);
   document.getElementById("tap").addEventListener("click", chime);
   document.getElementById("bgm").addEventListener("change", e=>setBgm(e.target.files[0]));
   document.getElementById("rec").addEventListener("click", toggleRec);
-
-  // SW
   if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js"); }
 });

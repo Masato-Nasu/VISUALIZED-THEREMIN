@@ -13,10 +13,10 @@
     <canvas id="canvas"></canvas>
   </div>
 
-  <!-- Minimal overlay (非表示にできる) -->
+  <!-- Overlay: two-finger touch to toggle -->
   <div id="hint">
     <div class="card">
-      <div>画面そのまま（KB）。音はAERIAL準拠。<br>1回タップして開始、以降は端末の傾きで演奏。</div>
+      <div>二本指タッチでこの操作パネルを表示/非表示できます。<br>1回タップして開始、以降は端末の傾きで演奏。</div>
       <button id="start" class="btn">▶ サウンド開始</button>
       <div style="margin-top:8px;">
         <label class="btn" for="bgm">🎵 BGM</label>
@@ -27,6 +27,8 @@
       <div style="margin-top:6px; font-size:12px; opacity:.8;">PCはキャンバス上のマウス移動（縦=音程／横=音量）</div>
     </div>
   </div>
+
+  <div class="badge">✌ 二本指タッチで操作パネル</div>
 
   <script src="./app.js"></script>
 </body>

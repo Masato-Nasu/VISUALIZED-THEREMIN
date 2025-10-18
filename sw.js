@@ -1,9 +1,9 @@
-// sw.js v=2
-const SW_VERSION="v2";
+// sw.js v=3 (two-finger toggle support; cache bump)
+const SW_VERSION="v3";
 const CACHE="kbxaerial-"+SW_VERSION;
 const ASSETS=[
   "./",
-  "./index.html?v=2",
+  "./index.html?v=3",
   "./manifest.json",
   "./style.css",
   "./app.js",
@@ -26,7 +26,7 @@ self.addEventListener("fetch",e=>{
         const copy=res.clone();
         caches.open(CACHE).then(c=>c.put(e.request, copy));
         return res;
-      }).catch(()=>caches.match("./index.html?v=2")))
+      }).catch(()=>caches.match("./index.html?v=3")))
     );
   }
 });
