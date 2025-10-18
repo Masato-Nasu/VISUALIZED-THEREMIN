@@ -4,57 +4,44 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>KB Visual Theremin — edgeSwipe</title>
+<title>KB Visual Theremin — edgeSwipe v3 (no mic)</title>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#0b0c10">
 <style>
-  :root{
-    --bg:#0b0c10; --glass:#12131acc; --line:#2a2a33; --txt:#e7e9ff;
-    --accent:#6ea8ff; --accent2:#8ef0c0;
-  }
-  html,body{ margin:0; height:100%; background:var(--bg); touch-action:none; }
-  #cv{ position:fixed; inset:0; display:block; }
-  /* Edge swipe area (bottom 28px) */
-  #edge{ position:fixed; left:0; right:0; bottom:0; height:28px; z-index:4; }
-  /* Panel */
-  #panel{ position:fixed; left:0; right:0; bottom:-68vh; height:68vh; z-index:5;
+  :root{{ --bg:#0b0c10; --glass:#12131acc; --line:#2a2a33; --txt:#e7e9ff; }}
+  html,body{{ margin:0; height:100%; background:var(--bg); touch-action:none; }}
+  #cv{{ position:fixed; inset:0; display:block; }}
+  #edge{{ position:fixed; left:0; right:0; bottom:0; height:28px; z-index:4; }}
+  #panel{{ position:fixed; left:0; right:0; bottom:-64vh; height:64vh; z-index:5;
           background:var(--glass); backdrop-filter: blur(10px);
           border-top:1px solid var(--line); border-radius:16px 16px 0 0;
-          color:var(--txt); font:14px/1.5 system-ui, -apple-system, "Noto Sans JP", sans-serif;
+          color:var(--txt); font:14px/1.5 system-ui, -apple-system, 'Noto Sans JP', sans-serif;
           box-shadow:0 -24px 60px rgba(0,0,0,.45); transition: transform .28s cubic-bezier(.2,.8,.2,1);
-          transform: translateY(0); }
-  #panel.show{ transform: translateY(-68vh); }
-  #grab{ height:36px; display:flex; align-items:center; gap:10px; padding:0 12px; cursor:grab; user-select:none; }
-  #grab:active{ cursor:grabbing; }
-  #bar{ width:48px; height:4px; border-radius:3px; background:#3b3f55; margin:0 auto; }
-  #controls{ padding:8px 14px 14px; display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
-  .card{ background:#151722; border:1px solid var(--line); border-radius:12px; padding:10px; }
-  .row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
-  .slider{ width:100%; }
-  .btn{ appearance:none; border:1px solid var(--line); background:#171a26; color:var(--txt);
-        border-radius:10px; padding:8px 12px; }
-  .btn:active{ transform: translateY(1px); }
-  #hud{ position:fixed; left:8px; top:8px; z-index:6; color:#cfe4ff; font:12px system-ui;
-        background:#0f1320cc; border:1px solid #334; padding:6px 8px; border-radius:10px; }
+          transform: translateY(0); }}
+  #panel.show{{ transform: translateY(-64vh); }}
+  #grab{{ height:36px; display:flex; align-items:center; gap:10px; padding:0 12px; user-select:none; }}
+  #bar{{ width:48px; height:4px; border-radius:3px; background:#3b3f55; margin:0 auto; }}
+  #controls{{ padding:8px 14px 94px; display:grid; grid-template-columns: 1fr 1fr; gap:12px; }}
+  .card{{ background:#151722; border:1px solid var(--line); border-radius:12px; padding:10px; }}
+  .row{{ display:flex; align-items:center; justify-content:space-between; gap:10px; }}
+  .slider{{ width:100%; }}
+  .btn{{ appearance:none; border:1px solid var(--line); background:#171a26; color:var(--txt);
+        border-radius:10px; padding:8px 12px; }}
+  .btn:active{{ transform: translateY(1px); }}
+  #close{{ margin-left:auto; }}
+  #hud{{ position:fixed; left:8px; top:8px; z-index:6; color:#cfe4ff; font:12px system-ui;
+        background:#0f1320cc; border:1px solid #334; padding:6px 8px; border-radius:10px; }}
 </style>
 </head>
 <body>
 <canvas id="cv"></canvas>
 <div id="edge"></div>
+
 <section id="panel" aria-hidden="true">
-  <div id="grab">
-    <div id="bar"></div>
-    <button id="close" class="btn" style="margin-left:auto;">✕</button>
-  </div>
+  <div id="grab"><div id="bar"></div><button id="close" class="btn">✕</button></div>
   <div id="controls">
     <div class="card">
       <div class="row"><strong>Theremin</strong><span id="readHz">hz: -</span></div>
-      <div class="row"><label>モード</label>
-        <select id="mode" class="btn">
-          <option value="touch">タッチ（X=ピッチ / Y=音量）</option>
-          <option value="mic">マイク追従（声のピッチ）</option>
-        </select>
-      </div>
       <div class="row"><label>ピッチ範囲</label>
         <input id="fmin" class="slider" type="range" min="80" max="400" step="1" value="120">
         <input id="fmax" class="slider" type="range" min="800" max="2400" step="10" value="1800">
@@ -63,6 +50,28 @@
         <select id="wave" class="btn">
           <option>sine</option><option>triangle</option><option>square</option><option>sawtooth</option>
         </select>
+      </div>
+    </div>
+    <div class="card">
+      <div class="row"><strong>音楽再生</strong><span id="trackName">Chime.mp3</span></div>
+      <div class="row">
+        <button id="play" class="btn">▶︎ / ⏸</button>
+        <input id="file" type="file" accept="audio/*" class="btn" style="padding:6px 8px;">
+      </div>
+      <div class="row">
+        <input id="seek" class="slider" type="range" min="0" max="1000" value="0">
+      </div>
+      <audio id="player" preload="auto" src="./Chime.mp3"></audio>
+    </div>
+    <div class="card">
+      <div class="row"><strong>効果音</strong><span>tap で再生</span></div>
+      <div class="row">
+        <button id="sfxChime" class="btn">🔔 Chime</button>
+        <button id="sfxBeep" class="btn">📢 Beep</button>
+      </div>
+      <div class="row">
+        <button id="sfxLaser" class="btn">🔦 Laser</button>
+        <button id="sfxNoise" class="btn">🌪 Noise</button>
       </div>
     </div>
     <div class="card">
@@ -76,178 +85,83 @@
     </div>
   </div>
 </section>
-<div id="hud">上スワイプで操作パネル / 画面タッチで演奏</div>
+
+<div id="hud">下端から上スワイプでパネル / 画面タッチで演奏（マイク機能なし）</div>
 
 <script>
-if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js'); }
+if('serviceWorker' in navigator){{ navigator.serviceWorker.register('./sw.js'); }}
 
-/* ===== Canvas visuals (KB風) ===== */
-const cv=document.getElementById('cv'), ctx=cv.getContext('2d',{alpha:false});
-function fit(){ cv.width=innerWidth*devicePixelRatio; cv.height=innerHeight*devicePixelRatio; }
-addEventListener('resize', fit, {passive:true}); fit();
+// Canvas visuals
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d',{{alpha:false}});
+function fit(){{ cv.width=innerWidth*devicePixelRatio; cv.height=innerHeight*devicePixelRatio; }}
+addEventListener('resize', fit, {{passive:true}}); fit();
 
-const COLORS=["#87c7ff","#39FF14","#FFD166","#FF4D6D","#9D4DFF"];
-const TYPES=["circle","triangle","square","star","heart"];
+const COLORS=["#87c7ff","#39FF14","#FFD166","#FF4D6D","#9D4DFF"], TYPES=["circle","triangle","square","star","heart"];
 const shapes=[];
-function starPath(r, spikes=5){ const p=new Path2D(); const step=Math.PI/spikes; p.moveTo(r,0); for(let i=0;i<spikes*2;i++){ const rr=(i%2===0)?r:r*0.45; const a=i*step; p.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);} p.closePath(); return p; }
-function heartPath(r){ const p=new Path2D(); p.moveTo(0,-r*0.2); p.bezierCurveTo(r*0.9,-r*0.9, r*1.4,r*0.5, 0,r*1.2); p.bezierCurveTo(-r*1.4,r*0.5, -r*0.9,-r*0.9, 0,-r*0.2); return p; }
-const starCache=new Map(), heartCache=new Map();
-function getStar(r){ const k=r|0; if(!starCache.has(k)) starCache.set(k, starPath(k)); return starCache.get(k); }
-function getHeart(r){ const k=r|0; if(!heartCache.has(k)) heartCache.set(k, heartPath(k)); return heartCache.get(k); }
+function starPath(r,s=5){{ const p=new Path2D(),st=Math.PI/s; p.moveTo(r,0); for(let i=0;i<s*2;i++){{ const rr=(i%2===0)?r:r*0.45, a=i*st; p.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);}} p.closePath(); return p; }}
+function getStar(r){{ const k=r|0; if(!getStar.c)getStar.c=new Map(); if(!getStar.c.has(k)) getStar.c.set(k, starPath(k)); return getStar.c.get(k); }}
+function draw(type,r){{ switch(type){{ case"circle":ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.stroke();break; case"triangle":ctx.beginPath();const h=r*1.1;ctx.moveTo(0,-h);ctx.lineTo(h*Math.sin(Math.PI/3),h*Math.cos(Math.PI/3));ctx.lineTo(-h*Math.sin(Math.PI/3),h*Math.cos(Math.PI/3));ctx.closePath();ctx.stroke();break; case"square":ctx.strokeRect(-r,-r,r*2,r*2);break; case"star":ctx.stroke(getStar(r));break; }} }}
+function reset(){{ shapes.length=0; for(let i=0;i<20;i++){{ const t=TYPES[i%TYPES.length], r=60*(0.6+Math.random()*0.7), x=Math.random()*cv.width, y=Math.random()*cv.height, rot=Math.random()*Math.PI*2, vx=(Math.random()-0.5)*0.5, vy=(Math.random()-0.5)*0.5, color=COLORS[i%COLORS.length]; shapes.push({{type:t,x,y,r,rot,vx,vy,color}}); }} }} reset();
 
-function reset(){
-  shapes.length=0; const n=20;
-  for(let i=0;i<n;i++){
-    const type=TYPES[i%TYPES.length];
-    const r=60*(0.6+Math.random()*0.7);
-    const x=Math.random()*cv.width, y=Math.random()*cv.height;
-    const rot=Math.random()*Math.PI*2;
-    const vx=(Math.random()-0.5)*0.5, vy=(Math.random()-0.5)*0.5;
-    const color=COLORS[i%COLORS.length];
-    shapes.push({type,x,y,r,rot,vx,vy,color});
-  }
-}
-reset();
-
-function drawShapeStroke(type,r){
-  switch(type){
-    case "circle": ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke(); break;
-    case "triangle": ctx.beginPath(); const h=r*1.1; ctx.moveTo(0,-h); ctx.lineTo(h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.lineTo(-h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.closePath(); ctx.stroke(); break;
-    case "square": ctx.strokeRect(-r,-r,r*2,r*2); break;
-    case "star": ctx.stroke(getStar(r)); break;
-    case "heart": ctx.stroke(getHeart(r)); break;
-  }
-}
-
-/* ===== Audio Theremin ===== */
-let ac=null, osc=null, gainNode=null, analyser=null, micSrc=null;
-let mode='touch';
+// Audio (no mic)
+let ac=null, osc=null, g=null, analyser=null;
 const readHz=document.getElementById('readHz');
+async function ensureAudio(){{ if(ac) return; ac=new (window.AudioContext||window.webkitAudioContext)(); osc=ac.createOscillator(); g=ac.createGain(); osc.type=document.getElementById('wave').value||'sine'; osc.frequency.value=440; g.gain.value=0.0; osc.connect(g).connect(ac.destination); analyser=ac.createAnalyser(); analyser.fftSize=2048; g.connect(analyser); osc.start(); }}
+function setThereminFromXY(x,y){{ const fmin=Number(document.getElementById('fmin').value), fmax=Number(document.getElementById('fmax').value); const hz=fmin*Math.pow(fmax/fmin,x); const vol=1-y; if(osc){{ osc.frequency.setTargetAtTime(hz, ac.currentTime, 0.01); }} if(g){{ g.gain.setTargetAtTime(vol*0.5, ac.currentTime, 0.02); }} incomingPitch(hz); }}
 
-async function ensureAudio(){
-  if(ac) return;
-  ac = new (window.AudioContext||window.webkitAudioContext)();
-  osc = ac.createOscillator();
-  gainNode = ac.createGain();
-  osc.type = document.getElementById('wave').value || 'sine';
-  osc.frequency.value = 440;
-  gainNode.gain.value = 0.0;
-  osc.connect(gainNode).connect(ac.destination);
-  analyser = ac.createAnalyser(); analyser.fftSize=2048;
-  gainNode.connect(analyser);
-  osc.start();
-}
+// Music Player
+const player=document.getElementById('player'), playBtn=document.getElementById('play'), fileInput=document.getElementById('file'), seek=document.getElementById('seek'), trackName=document.getElementById('trackName');
+playBtn.addEventListener('click', async ()=>{{ await ensureAudio(); if(player.paused){{ player.play(); }} else {{ player.pause(); }} }});
+fileInput.addEventListener('change', (e)=>{{ const f=e.target.files && e.target.files[0]; if(!f) return; player.src=URL.createObjectURL(f); trackName.textContent=f.name; player.play(); }});
+player.addEventListener('timeupdate', ()=>{{ if(!isNaN(player.duration)) seek.value=Math.floor(1000*player.currentTime/player.duration); }});
+seek.addEventListener('input', ()=>{{ if(!isNaN(player.duration)) player.currentTime=(seek.value/1000)*player.duration; }});
+player.addEventListener('play', ()=>{{ playBtn.textContent='⏸'; }}); player.addEventListener('pause', ()=>{{ playBtn.textContent='▶︎'; }});
 
-function setThereminFromXY(x, y){
-  const fmin = Number(document.getElementById('fmin').value);
-  const fmax = Number(document.getElementById('fmax').value);
-  const hz = fmin * Math.pow(fmax/fmin, x); // log map
-  const vol = 1 - y; // top quiet, bottom loud
-  if(osc){ osc.frequency.setTargetAtTime(hz, ac.currentTime, 0.01); }
-  if(gainNode){ gainNode.gain.setTargetAtTime(vol*0.5, ac.currentTime, 0.02); }
-  incomingPitch(hz);
-}
+// SFX
+let chimeBuf=null; async function loadChime(){{ try{{ const res=await fetch('./Chime.mp3'); const arr=await res.arrayBuffer(); chimeBuf=await (ac||new (window.AudioContext||window.webkitAudioContext)()).decodeAudioData(arr);}}catch{{}} }}
+async function playBuf(buf, gain=0.9){{ await ensureAudio(); const src=ac.createBufferSource(); src.buffer=buf; const gg=ac.createGain(); gg.gain.value=gain; src.connect(gg).connect(ac.destination); src.start(); }}
+document.getElementById('sfxChime').addEventListener('click', async ()=>{{ if(!chimeBuf) await loadChime(); if(chimeBuf) playBuf(chimeBuf,0.8); }});
+document.getElementById('sfxBeep').addEventListener('click', async ()=>{{ await ensureAudio(); const o=ac.createOscillator(), gg=ac.createGain(); o.type='sine'; o.frequency.value=880; gg.gain.value=0.0; o.connect(gg).connect(ac.destination); o.start(); gg.gain.linearRampToValueAtTime(0.6, ac.currentTime+0.01); gg.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime+0.25); o.stop(ac.currentTime+0.3); }});
+document.getElementById('sfxLaser').addEventListener('click', async ()=>{{ await ensureAudio(); const o=ac.createOscillator(), gg=ac.createGain(); o.type='sawtooth'; o.frequency.setValueAtTime(1800, ac.currentTime); gg.gain.value=0.0; o.connect(gg).connect(ac.destination); o.start(); o.frequency.exponentialRampToValueAtTime(220, ac.currentTime+0.4); gg.gain.linearRampToValueAtTime(0.7, ac.currentTime+0.02); gg.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime+0.42); o.stop(ac.currentTime+0.45); }});
+document.getElementById('sfxNoise').addEventListener('click', async ()=>{{ await ensureAudio(); const buffer=ac.createBuffer(1, ac.sampleRate*0.4, ac.sampleRate), data=buffer.getChannelData(0); for(let i=0;i<data.length;i++) data[i]=(Math.random()*2-1)*0.6; const src=ac.createBufferSource(); src.buffer=buffer; const gg=ac.createGain(); gg.gain.value=0.0; src.connect(gg).connect(ac.destination); src.start(); gg.gain.linearRampToValueAtTime(0.7, ac.currentTime+0.02); gg.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime+0.4); }});
 
-/* Mic mode (optional) */
-async function startMic(){
-  await ensureAudio();
-  const stream = await navigator.mediaDevices.getUserMedia({audio:true});
-  micSrc = ac.createMediaStreamSource(stream);
-  const tee = ac.createGain(); tee.gain.value=1;
-  micSrc.connect(tee); tee.connect(gainNode); // pass-through so we hear it softly
-  const ana = ac.createAnalyser(); ana.fftSize=2048; tee.connect(ana);
-  const N=2048, buf=new Float32Array(N), sr=ac.sampleRate||48000;
-  (function loop(){
-    ana.getFloatTimeDomainData(buf);
-    // Autocorrelation (simple)
-    let rms=0; for(let i=0;i<N;i++) rms+=buf[i]*buf[i]; rms=Math.sqrt(rms/N);
-    if(rms>0.003){
-      let mean=0; for(let i=0;i<N;i++) mean+=buf[i]; mean/=N; for(let i=0;i<N;i++) buf[i]-=mean;
-      let best=-1, bc=0; for(let off=20; off<N/2; off++){ let c=0; for(let i=0;i<N-off;i++) c+=buf[i]*buf[i+off]; c/=(N-off); if(c>bc){ bc=c; best=off; } }
-      if(best>0){ const hz = sr/best; incomingPitch(hz); }
-    }
-    requestAnimationFrame(loop);
-  })();
-}
+// Pitch->Visual mapping
+let FMIN=120, FMAX=1800, env=0, prevTarget=0, med=[]; const readEnv=document.getElementById('readEnv');
+function hz2norm(hz){{ const c=Math.max(FMIN, Math.min(FMAX, hz||FMIN)); return (Math.log(c)-Math.log(FMIN))/(Math.log(FMAX)-Math.log(FMIN)); }}
+function incomingPitch(hz){{ document.getElementById('readHz').textContent='hz: '+hz.toFixed(1); FMIN=Number(document.getElementById('fmin').value); FMAX=Number(document.getElementById('fmax').value); const REL=Number(document.getElementById('rel').value); const n0=hz2norm(hz); med.push(n0); if(med.length>5) med.shift(); const n=[...med].sort((a,b)=>a-b)[Math.floor(med.length/2)]; const STEP_UP=0.18, STEP_DOWN=0.16; const up=Math.min(n-prevTarget, STEP_UP), dn=Math.max(n-prevTarget, -STEP_DOWN); const target=(n>=prevTarget)?(prevTarget+up):(prevTarget+dn); const ATTACK=0.75; env=env+(target-env)*((target>=env)?ATTACK:REL); prevTarget=target; readEnv.textContent='env: '+env.toFixed(3); }}
 
-/* ===== Pitch → Visual size mapping (smooth both directions) ===== */
-let FMIN=120, FMAX=1800;
-let env=0, prevTarget=0, med=[];
-const readEnv=document.getElementById('readEnv');
-function hz2norm(hz){ const c=Math.max(FMIN, Math.min(FMAX, hz||FMIN)); return (Math.log(c)-Math.log(FMIN))/(Math.log(FMAX)-Math.log(FMIN)); }
-
-function incomingPitch(hz){
-  readHz.textContent = 'hz: ' + hz.toFixed(1);
-  FMIN = Number(document.getElementById('fmin').value);
-  FMAX = Number(document.getElementById('fmax').value);
-  const REL = Number(document.getElementById('rel').value);
-  const n0 = hz2norm(hz);
-  med.push(n0); if(med.length>5) med.shift();
-  const n = [...med].sort((a,b)=>a-b)[Math.floor(med.length/2)];
-  const STEP_UP=0.18, STEP_DOWN=0.16;
-  const up=Math.min(n-prevTarget, STEP_UP), dn=Math.max(n-prevTarget, -STEP_DOWN);
-  const target=(n>=prevTarget)? (prevTarget+up):(prevTarget+dn);
-  const ATTACK=0.75; const RELEASE=REL;
-  env = env + (target - env) * ((target>=env)?ATTACK:RELEASE);
-  prevTarget=target;
-  readEnv.textContent = 'env: ' + env.toFixed(3);
-}
-
-/* ===== Gestures: edge swipe to show; header swipe down or ✕ to hide ===== */
-const panel=document.getElementById('panel'), edge=document.getElementById('edge'), closeBtn=document.getElementById('close');
-function showPanel(){ panel.classList.add('show'); panel.setAttribute('aria-hidden','false'); }
-function hidePanel(){ panel.classList.remove('show'); panel.setAttribute('aria-hidden','true'); }
-
-let eStartY=0, eActive=false;
-edge.addEventListener('touchstart',(e)=>{ if(e.touches.length===1){ eActive=true; eStartY=e.touches[0].clientY; } }, {passive:true});
-edge.addEventListener('touchmove',(e)=>{ if(!eActive)return; const dy=e.touches[0].clientY - eStartY; if(dy<-24){ showPanel(); eActive=false; } }, {passive:true});
-edge.addEventListener('touchend', ()=>{ eActive=false; }, {passive:true});
-
-const grab=document.getElementById('grab'); let gStartY=0, gActive=false;
-grab.addEventListener('touchstart',(e)=>{ if(e.touches.length===1){ gActive=true; gStartY=e.touches[0].clientY; } }, {passive:true});
-grab.addEventListener('touchmove',(e)=>{ if(!gActive)return; const dy=e.touches[0].clientY - gStartY; if(dy>24){ hidePanel(); gActive=false; } }, {passive:true});
-grab.addEventListener('touchend', ()=>{ gActive=false; }, {passive:true});
+// Gestures
+const panelEl=document.getElementById('panel'), edge=document.getElementById('edge'), closeBtn=document.getElementById('close');
+function showPanel(){{ panelEl.classList.add('show'); panelEl.setAttribute('aria-hidden','false'); }}
+function hidePanel(){{ panelEl.classList.remove('show'); panelEl.setAttribute('aria-hidden','true'); }}
+let eStartY=0, eActive=false; edge.addEventListener('touchstart',(e)=>{{ if(e.touches.length===1){{ eActive=true; eStartY=e.touches[0].clientY; }} }}, {{passive:true}});
+edge.addEventListener('touchmove',(e)=>{{ if(!eActive)return; const dy=e.touches[0].clientY - eStartY; if(dy<-24){{ showPanel(); eActive=false; }} }}, {{passive:true}});
+edge.addEventListener('touchend', ()=>{{ eActive=false; }}, {{passive:true}});
+const grab=document.getElementById('grab'); let gStartY=0, gActive=false; grab.addEventListener('touchstart',(e)=>{{ if(e.touches.length===1){{ gActive=true; gStartY=e.touches[0].clientY; }} }}, {{passive:true}});
+grab.addEventListener('touchmove',(e)=>{{ if(!gActive)return; const dy=e.touches[0].clientY - gStartY; if(dy>24){{ hidePanel(); gActive=false; }} }}, {{passive:true}});
+grab.addEventListener('touchend', ()=>{{ gActive=false; }}, {{passive:true}});
 closeBtn.addEventListener('click', hidePanel);
 
-/* ===== Touch play area (fullscreen) ===== */
-let touching=false;
-function pos(e){ const t=e.touches?e.touches[0]:e; return {x:t.clientX/innerWidth, y:t.clientY/innerHeight}; }
-addEventListener('touchstart', async (e)=>{
-  if((e.target===edge)||(e.target===grab)||(panel.contains(e.target))) return;
-  touching=true; await ensureAudio(); if(mode==='touch'){ const p=pos(e); setThereminFromXY(p.x, p.y); }
-}, {passive:false});
-addEventListener('touchmove', (e)=>{
-  if(!touching) return;
-  if(mode==='touch'){ const p=pos(e); setThereminFromXY(p.x, p.y); }
-}, {passive:false});
-addEventListener('touchend', ()=>{ touching=false; if(mode==='touch' && gainNode){ gainNode.gain.setTargetAtTime(0, ac.currentTime, 0.02); } }, {passive:true});
+// Touch Theremin play
+let touching=false; function pos(e){{ const t=e.touches?e.touches[0]:e; return {{x:t.clientX/innerWidth, y:t.clientY/innerHeight}}; }}
+addEventListener('touchstart', async (e)=>{{ if((e.target===edge)||(e.target===grab)||(panelEl.contains(e.target))) return; touching=true; await ensureAudio(); const p=pos(e); setThereminFromXY(p.x,p.y); }}, {{passive:false}});
+addEventListener('touchmove', (e)=>{{ if(!touching) return; const p=pos(e); setThereminFromXY(p.x,p.y); }}, {{passive:false}});
+addEventListener('touchend', ()=>{{ touching=false; if(g){{ g.gain.setTargetAtTime(0, ac.currentTime, 0.02); }} }}, {{passive:true}});
 
-/* ===== Controls ===== */
-document.getElementById('mode').addEventListener('change', async (e)=>{
-  mode = e.target.value;
-  if(mode==='mic'){ await startMic(); if(gainNode) gainNode.gain.setTargetAtTime(0.15, ac.currentTime, 0.05); }
-});
-document.getElementById('wave').addEventListener('change',(e)=>{ if(osc) osc.type=e.target.value; });
+document.getElementById('wave').addEventListener('change',(e)=>{{ if(osc) osc.type=e.target.value; }});
 
-/* ===== Render loop ===== */
-function loop(){
-  const w=cv.width,h=cv.height;
-  ctx.fillStyle="#0b0c10"; ctx.fillRect(0,0,w,h);
-  const gain = Number(document.getElementById('gain').value || 0.30);
-  for(const s of shapes){
-    s.x+=s.vx; s.y+=s.vy; s.rot+=0.008;
-    if(s.x<s.r){ s.x=s.r; s.vx=Math.abs(s.vx); } if(s.x>w-s.r){ s.x=w-s.r; s.vx=-Math.abs(s.vx); }
-    if(s.y<s.r){ s.y=s.r; s.vy=Math.abs(s.vy); } if(s.y>h-s.r){ s.y=h-s.r; s.vy=-Math.abs(s.vy); }
-    s.vx*=0.992; s.vy*=0.992;
-    const base=s.r, scale=1 + gain*env, r=base*scale;
+// Render loop
+function loop(){{ const w=cv.width,h=cv.height; ctx.fillStyle='#0b0c10'; ctx.fillRect(0,0,w,h); const gain=Number(document.getElementById('gain').value||0.30);
+  for(const s of shapes){{ s.x+=s.vx; s.y+=s.vy; s.rot+=0.008;
+    if(s.x<s.r){{ s.x=s.r; s.vx=Math.abs(s.vx);}} if(s.x>w-s.r){{ s.x=w-s.r; s.vx=-Math.abs(s.vx);}}
+    if(s.y<s.r){{ s.y=s.r; s.vy=Math.abs(s.vy);}} if(s.y>h-s.r){{ s.y=h-s.r; s.vy=-Math.abs(s.vy);}}
+    s.vx*=0.992; s.vy*=0.992; const base=s.r, scale=1+gain*env, r=base*scale;
     ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.rot);
-    ctx.lineJoin="round"; ctx.lineCap="round";
-    ctx.shadowColor=s.color; ctx.shadowBlur=30; ctx.strokeStyle=s.color; ctx.lineWidth=8; drawShapeStroke(s.type,r);
-    ctx.shadowBlur=12; ctx.strokeStyle="#ffffff"; ctx.lineWidth=3; drawShapeStroke(s.type,r);
-    ctx.restore();
-  }
-  requestAnimationFrame(loop);
-}
+    ctx.lineJoin='round'; ctx.lineCap='round';
+    ctx.shadowColor=s.color; ctx.shadowBlur=30; ctx.strokeStyle=s.color; ctx.lineWidth=8; draw(s.type,r);
+    ctx.shadowBlur=12; ctx.strokeStyle='#fff'; ctx.lineWidth=3; draw(s.type,r);
+    ctx.restore(); }}
+  requestAnimationFrame(loop); }}
 loop();
 </script>
 </body>
