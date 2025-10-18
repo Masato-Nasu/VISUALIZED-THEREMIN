@@ -19,45 +19,42 @@
   </style>
 </head>
 <body>
-  <iframe id="kbFrame" src="./kb_patched.html" allow="autoplay; fullscreen"></iframe>
+  <iframe id="kbFrame" allow="fullscreen" src="./kb_patched.html?v=15" allow="autoplay; fullscreen"></iframe>
   <div id="panel">
     <div id="drag">AERIAL 操作パネル（二本指/長押しで表示切替・ドラッグで移動・Sキーでも可）</div>
-    <iframe id="aerialFrame" src="./aerial/index.html" allow="autoplay; microphone; fullscreen; clipboard-read; clipboard-write"></iframe>
+    <iframe id="aerialFrame" allow="autoplay; microphone; fullscreen" src="./aerial/index.html?v=15" allow="autoplay; microphone; fullscreen; clipboard-read; clipboard-write"></iframe>
   </div>
   <div id="hint">✌ 二本指タッチ／長押し（0.8秒）／Sキー でパネル表示</div>
 
   <script>
 
     if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js"); }
-    const kbFrame = document.getElementById('kbFrame');
+
     const panel = document.getElementById('panel');
     const hint = document.getElementById('hint');
+    const kbFrame = document.getElementById('kbFrame');
     const aerialFrame = document.getElementById('aerialFrame');
 
     function setPanel(show){ panel.style.display = show ? "block" : "none"; hint.style.opacity = show ? 0.6 : 0.9; }
     function toggle(force){ if(typeof force==="boolean"){ setPanel(force); } else { setPanel(panel.style.display!=="block"); } }
-    (function(){ setPanel(true); setTimeout(()=>setPanel(false), 2500); })();
 
-    // Parent two-finger
-    let lastTF=0;
-    document.addEventListener('touchstart', e=>{
-      const now=performance.now();
-      if(e.touches && e.touches.length>=2 && now-lastTF>400){ lastTF=now; toggle(); }
-    }, {passive:true});
+    // Show briefly on load
+    (function(){ setPanel(true); setTimeout(()=>setPanel(false), 2400); })();
 
-    // Aux: long-press & S
+    // Parent-level long-press & S
     (function(){
       let t=null;
-      document.addEventListener('touchstart', e=>{ if(e.touches?.length===1){ t=setTimeout(()=>toggle(), 800);} }, {passive:true});
+      document.addEventListener('touchstart', e=>{ if(e.touches?.length===1){ t=setTimeout(()=>toggle(), 800); } }, {passive:true});
       const cancel=()=>{ if(t){ clearTimeout(t); t=null; } };
-      document.addEventListener('touchend', cancel); document.addEventListener('touchmove', cancel);
+      document.addEventListener('touchend', cancel);
+      document.addEventListener('touchmove', cancel);
     })();
     document.addEventListener('keydown', e=>{ if(e.key==='s'||e.key==='S'){ toggle(); } });
 
-    // Emergency hotspots
+    // Visible toggles
     (function(){
       const gear=document.createElement('button');
-      gear.textContent="⚙"; Object.assign(gear.style,{position:"fixed",left:"6px",top:"6px",width:"24px",height:"24px",borderRadius:"6px",border:"1px solid #2a2a33",background:"#111114cc",color:"#cfd3ff",font:"600 12px ui-sans-serif",zIndex:30,opacity:.55});
+      gear.textContent="⚙"; Object.assign(gear.style,{position:"fixed",left:"6px",top:"6px",width:"24px",height:"24px",borderRadius:"6px",border:"1px solid #2a2a33",background:"#111114cc",color:"#cfd3ff",font:"600 12px ui-sans-serif",zIndex:30,opacity:.6});
       gear.addEventListener('click', ()=>toggle(true)); document.body.appendChild(gear);
       const br=document.createElement('div');
       Object.assign(br.style,{position:"fixed",right:"8px",bottom:"8px",width:"48px",height:"48px",zIndex:29,background:"transparent"});
@@ -65,27 +62,108 @@
       document.body.appendChild(br);
     })();
 
-    // Level from AERIAL (true) only
-    let env=0; const ATTACK=0.7, RELEASE=0.2;
+    // Envelope scaling using ONLY true level from AERIAL
+    let env=0; const ATTACK=0.8, RELEASE=0.25;
     kbFrame.style.transition="none"; kbFrame.style.transformOrigin="50% 50%";
     window.addEventListener("message", (e)=>{
       if(e?.data?.type==="AERIAL_LEVEL_TRUE" && typeof e.data.vol==="number"){
         const target = Math.max(0, Math.min(1, e.data.vol));
         const coeff = (target>=env) ? ATTACK : RELEASE;
         env = env + (target - env) * coeff;
-        const scale = 1 + 0.22*env;
+        const scale = 1 + 0.24*env;
         kbFrame.style.transform = `scale(${scale})`;
       }
+      // Two-finger relays from iframes
       if(e?.data?.type==="KB_TWO_FINGER"){ toggle(); }
+      if(e?.data?.type==="AERIAL_TWO_FINGER"){ toggle(); }
     });
 
-    // Tell AERIAL we're ready (optional)
-    try{ aerialFrame.contentWindow.postMessage({type:"HELLO_PARENT"}, "*"); }catch{}
-
-    // Inject robust two-finger detector into KB
-    document.getElementById('kbFrame').addEventListener('load', ()=>{
+    // Inject bridge into AERIAL at runtime (true level via analyser tee)
+    aerialFrame.addEventListener("load", ()=>{
       try{
-        const d=document.getElementById('kbFrame').contentDocument;
+        const d=aerialFrame.contentDocument;
+        const s=d.createElement("script");
+        s.type="text/javascript";
+        s.text = `
+          (function(){
+            // Two-finger detector -> parent
+            (function(){
+              let last=0;
+              function on2(e){
+                if(e.touches && e.touches.length>=2){
+                  const now=performance.now();
+                  if(now-last>400){ last=now; try{ parent.postMessage({type:"AERIAL_TWO_FINGER"}, "*"); }catch{} }
+                  e.preventDefault(); e.stopImmediatePropagation(); return false;
+                }
+              }
+              ['touchstart','touchmove','touchend','gesturestart'].forEach(tp=>{
+                document.addEventListener(tp, on2, {capture:true, passive:false});
+              });
+            })();
+
+            // True audio level bridge
+            let analyser=null, hooked=false;
+            function startPosting(ctx, node){
+              if(hooked) return;
+              hooked=true;
+              analyser = ctx.createAnalyser(); analyser.fftSize = 512;
+              const capture = new Float32Array(analyser.fftSize);
+              const tee = ctx.createGain(); tee.gain.value = 1.0;
+              try{ node.disconnect(); }catch{}
+              node.connect(tee); tee.connect(ctx.destination); tee.connect(analyser);
+              setInterval(()=>{
+                analyser.getFloatTimeDomainData(capture);
+                let sum=0; for(let i=0;i<capture.length;i++){ const v=capture[i]; sum+=v*v; }
+                const rms = Math.sqrt(sum/capture.length);
+                const level = Math.max(0, Math.min(1, rms*3.0));
+                try{ parent.postMessage({type:"AERIAL_LEVEL_TRUE", vol: level}, "*"); }catch{}
+              }, 50);
+            }
+            function tryHook(){
+              const cands=[window.masterGain, window.master, window.MainGain, window.master_out, window.gMaster];
+              for(const g of cands){
+                try{ if(g && g.context && g.gain){ startPosting(g.context, g); return true; } }catch{}
+              }
+              return false;
+            }
+            if(!tryHook()){
+              const _connect=AudioNode.prototype.connect;
+              AudioNode.prototype.connect=function(){
+                try{
+                  const ctx=this.context;
+                  for(let i=0;i<arguments.length;i++){
+                    if(arguments[i] && arguments[i]===ctx.destination && !hooked){
+                      const tee = ctx.createGain(); tee.gain.value=1.0;
+                      _connect.call(this, tee);
+                      _connect.call(tee, ctx.destination);
+                      analyser = ctx.createAnalyser(); analyser.fftSize = 512;
+                      const capture=new Float32Array(analyser.fftSize);
+                      _connect.call(tee, analyser);
+                      hooked=true;
+                      setInterval(()=>{
+                        analyser.getFloatTimeDomainData(capture);
+                        let sum=0; for(let j=0;j<capture.length;j++){ const v=capture[j]; sum+=v*v; }
+                        const rms=Math.sqrt(sum/capture.length);
+                        const level=Math.max(0, Math.min(1, rms*3.0));
+                        try{ parent.postMessage({type:"AERIAL_LEVEL_TRUE", vol: level}, "*"); }catch{}
+                      }, 50);
+                      return;
+                    }
+                  }
+                }catch{}
+                return _connect.apply(this, arguments);
+              };
+            }
+          })();
+        `;
+        d.head.appendChild(s);
+      }catch{}
+    });
+
+    // Inject two-finger detector into KB as well
+    kbFrame.addEventListener("load", ()=>{
+      try{
+        const d=kbFrame.contentDocument;
         const s=d.createElement("script");
         s.type="text/javascript";
         s.text = `
@@ -95,8 +173,7 @@
               if(e.touches && e.touches.length>=2){
                 const now=performance.now();
                 if(now-last>400){ last=now; try{ parent.postMessage({type:"KB_TWO_FINGER"}, "*"); }catch{} }
-                e.preventDefault(); e.stopImmediatePropagation();
-                return false;
+                e.preventDefault(); e.stopImmediatePropagation(); return false;
               }
             }
             ['touchstart','touchmove','touchend','gesturestart'].forEach(tp=>{
