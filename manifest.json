@@ -1,7 +1,7 @@
 {
-  "name": "KB×AERIAL — from scratch",
+  "name": "KB×AERIAL — full v2",
   "short_name": "KB×AERIAL",
-  "start_url": "./index.html?v=1",
+  "start_url": "./index.html?v=2",
   "display": "standalone",
   "background_color": "#0b0c10",
   "theme_color": "#0b0c10",

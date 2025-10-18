@@ -17,16 +17,16 @@ const cv=document.getElementById('cv'), ctx=cv.getContext('2d',{alpha:false});
 function fit(){ cv.width=innerWidth*devicePixelRatio; cv.height=innerHeight*devicePixelRatio; }
 addEventListener('resize', fit, {passive:true}); fit();
 
-let env=0; // 0..1 from parent (pitch-mapped)
+let env=0; // 0..1 from parent
 window.addEventListener('message', (e)=>{
   if(e && e.data && e.data.type==='PITCH_NORM' && typeof e.data.v==='number'){
     env = Math.max(0, Math.min(1, e.data.v));
   }
 });
 
-const COLORS=["#39FF14","#00FFFF","#FF4D6D","#FFD166","#9D4DFF"];
+const COLORS=["#87c7ff","#39FF14","#FFD166","#FF4D6D","#9D4DFF"];
 const TYPES=["circle","triangle","square","star","heart"];
-const shapes=[]; let t=0;
+const shapes=[];
 function starPath(r, spikes=5){ const p=new Path2D(); const step=Math.PI/spikes; p.moveTo(r,0); for(let i=0;i<spikes*2;i++){ const rr=(i%2===0)?r:r*0.45; const a=i*step; p.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);} p.closePath(); return p; }
 function heartPath(r){ const p=new Path2D(); p.moveTo(0,-r*0.2); p.bezierCurveTo(r*0.9,-r*0.9, r*1.4,r*0.5, 0,r*1.2); p.bezierCurveTo(-r*1.4,r*0.5, -r*0.9,-r*0.9, 0,-r*0.2); return p; }
 const starCache=new Map(), heartCache=new Map();
@@ -34,15 +34,15 @@ function getStar(r){ const k=r|0; if(!starCache.has(k)) starCache.set(k, starPat
 function getHeart(r){ const k=r|0; if(!heartCache.has(k)) heartCache.set(k, heartPath(k)); return heartCache.get(k); }
 
 function reset(){
-  shapes.length=0; const n=22;
+  shapes.length=0; const n=20;
   for(let i=0;i<n;i++){
     const type=TYPES[i%TYPES.length];
-    const r=70*(0.6+Math.random()*0.6);
+    const r=60*(0.6+Math.random()*0.7);
     const x=Math.random()*cv.width, y=Math.random()*cv.height;
     const rot=Math.random()*Math.PI*2;
     const vx=(Math.random()-0.5)*0.5, vy=(Math.random()-0.5)*0.5;
     const color=COLORS[i%COLORS.length];
-    shapes.push({type,x,y,r,rot,vx,vy,pulse:0,color});
+    shapes.push({type,x,y,r,rot,vx,vy,color});
   }
 }
 reset();
@@ -66,7 +66,7 @@ function loop(){
     if(s.y<s.r){ s.y=s.r; s.vy=Math.abs(s.vy); } if(s.y>h-s.r){ s.y=h-s.r; s.vy=-Math.abs(s.vy); }
     s.vx*=0.992; s.vy*=0.992;
     const base = s.r;
-    const scale = 1 + env*0.35; // ただ大きく：envが上がるほど拡大
+    const scale = 1 + env*0.35; // 高い音ほどただ大きく
     const r = base*scale;
     ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.rot);
     ctx.lineJoin="round"; ctx.lineCap="round";
@@ -74,7 +74,7 @@ function loop(){
     ctx.shadowBlur=12; ctx.strokeStyle="#ffffff"; ctx.lineWidth=3; drawShapeStroke(s.type,r);
     ctx.restore();
   }
-  t++; requestAnimationFrame(loop);
+  requestAnimationFrame(loop);
 }
 loop();
 </script>

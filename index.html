@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"/>
-<title>KB×AERIAL — from scratch</title>
+<title>KB×AERIAL — full v2</title>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#0b0c10">
 <style>
@@ -19,7 +19,7 @@
 </style>
 </head>
 <body>
-  <iframe id="kbFrame" src="./kb/index.html?v=1" allow="fullscreen"></iframe>
+  <iframe id="kbFrame" src="./kb/index.html?v=2" allow="fullscreen"></iframe>
 
   <div id="panel">
     <div id="drag">操作パネル（✌ 二本指長押しで表示/非表示・ドラッグ移動）</div>
@@ -36,53 +36,63 @@ function setPanel(show){ panel.style.display=show?'block':'none'; hint.style.opa
 function togglePanel(){ setPanel(panel.style.display!=='block'); }
 setPanel(true); setTimeout(()=>setPanel(false), 1800);
 
-// Two‑finger long‑press (0.8s)
-const active=new Map(); let holdTimer=null;
-const cancelHold=()=>{ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } };
-document.addEventListener('pointerdown', e=>{ active.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(active.size>=2 && !holdTimer) holdTimer=setTimeout(()=>togglePanel(),800); if(active.size>=2) e.preventDefault(); }, {capture:true, passive:false});
-document.addEventListener('pointermove', e=>{ const p=active.get(e.pointerId); if(p && (Math.abs(e.clientX-p.x)>20||Math.abs(e.clientY-p.y)>20)) cancelHold(); if(active.size>=2) e.preventDefault(); }, {capture:true, passive:false});
-['pointerup','pointercancel','lostpointercapture'].forEach(ev=>{ document.addEventListener(ev, e=>{ active.delete(e.pointerId); cancelHold(); }, {capture:true, passive:false}); });
+// ===== Two-finger long-press (0.8s) — pointer + touch =====
+(function(){
+  const active=new Map(); let holdTimer=null;
+  const cancelHold=()=>{ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } };
+  document.addEventListener('pointerdown', e=>{ active.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(active.size>=2 && !holdTimer) holdTimer=setTimeout(()=>togglePanel(),800); if(active.size>=2) e.preventDefault(); }, {capture:true, passive:false});
+  document.addEventListener('pointermove', e=>{ const p=active.get(e.pointerId); if(p && (Math.abs(e.clientX-p.x)>20||Math.abs(e.clientY-p.y)>20)) cancelHold(); if(active.size>=2) e.preventDefault(); }, {capture:true, passive:false});
+  ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>{ document.addEventListener(ev, e=>{ active.delete(e.pointerId); cancelHold(); }, {capture:true, passive:false}); });
 
-// Mask AERIAL branding (CSS only)
-aerialFrame.addEventListener('load', ()=>{ try{ const d=aerialFrame.contentDocument; const st=d.createElement('style'); st.textContent='h1, header, [class*=title], [class*=header], [data-brand]{display:none!important;} body{font-family:system-ui,\"Noto Sans JP\",sans-serif;}'; d.head.appendChild(st); }catch(_ ){} });
+  let tc=0, tPts=[], tTimer=null; const tCancel=()=>{ if(tTimer){ clearTimeout(tTimer); tTimer=null; } };
+  document.addEventListener('touchstart', e=>{ tc=e.touches.length; tPts=Array.from(e.touches).map(t=>({x:t.clientX,y:t.clientY})); if(tc>=2 && !tTimer){ tTimer=setTimeout(()=>togglePanel(),800); e.preventDefault(); } }, {capture:true, passive:false});
+  document.addEventListener('touchmove', e=>{ if(tc>=2){ const moved=Array.from(e.touches).some((t,i)=>{ const p=tPts[i]||tPts[0]; return Math.abs(t.clientX-p.x)>20||Math.abs(t.clientY-p.y)>20; }); if(moved) tCancel(); e.preventDefault(); } }, {capture:true, passive:false});
+  document.addEventListener('touchend', ()=>{ tCancel(); tc=0; }, {capture:true, passive:false});
+  document.addEventListener('touchcancel', ()=>{ tCancel(); tc=0; }, {capture:true, passive:false});
+})();
 
-// Pitch bridge injection (autocorrelation)
-aerialFrame.addEventListener('load', ()=>{
-  try{
-    const d=aerialFrame.contentDocument;
-    const s=d.createElement('script'); s.type='text/javascript';
-    s.text=`
-      (function(){
-        let analyser=null, hooked=false, ctx=null;
-        function postLoop(a, ctx){ const N=2048, buf=new Float32Array(N), sr=ctx.sampleRate||48000;
-          const loop=()=>{ a.getFloatTimeDomainData(buf); let rms=0; for(let i=0;i<N;i++) rms+=buf[i]*buf[i]; rms=Math.sqrt(rms/N);
-            if(rms<0.004){ requestAnimationFrame(loop); return; }
-            let mean=0; for(let i=0;i<N;i++) mean+=buf[i]; mean/=N; for(let i=0;i<N;i++) buf[i]-=mean;
-            let best=-1, bestCorr=0; for(let off=20; off<N/2; off++){ let c=0; for(let i=0;i<N-off;i++) c+=buf[i]*buf[i+off]; c/=(N-off); if(c>bestCorr){ bestCorr=c; best=off; } }
-            if(best>0){ const hz=sr/best; try{ parent.postMessage({type:'AERIAL_PITCH_HZ', hz}, '*'); }catch{} }
-            requestAnimationFrame(loop);
-          }; requestAnimationFrame(loop); }
-        function tryHook(){ const cs=[window.masterGain, window.master, window.MainGain, window.master_out, window.gMaster];
-          for(const g of cs){ try{ if(g && g.context && g.gain){ ctx=g.context; const tee=ctx.createGain(); tee.gain.value=1; try{ g.disconnect(); }catch{} g.connect(tee); tee.connect(ctx.destination); analyser=ctx.createAnalyser(); analyser.fftSize=2048; tee.connect(analyser); hooked=true; postLoop(analyser, ctx); return true; } }catch{} } return false; }
-        if(!tryHook()){ const _c=AudioNode.prototype.connect; AudioNode.prototype.connect=function(){ try{ const ctx=this.context; for(let i=0;i<arguments.length;i++){ if(arguments[i]===ctx.destination && !hooked){ const tee=ctx.createGain(); tee.gain.value=1; _c.call(this, tee); _c.call(tee, ctx.destination); analyser=ctx.createAnalyser(); analyser.fftSize=2048; _c.call(tee, analyser); hooked=true; postLoop(analyser, ctx); return; } } }catch{} return _c.apply(this, arguments); }; }
-      })();
-    `;
-    d.head.appendChild(s);
-  }catch(_ ){}
-});
+// ===== Mask AERIAL branding =====
+aerialFrame.addEventListener('load', ()=>{ try{ const d=aerialFrame.contentDocument; const st=d.createElement('style'); st.textContent='h1, header, [class*=title], [class*=header], [data-brand]{display:none!important;} body{font-family:system-ui,\'Noto Sans JP\',sans-serif;}'; d.head.appendChild(st); }catch(_ ){} });
 
-// Parent: map pitch -> KB scale
-const FMIN=120, FMAX=1800, ATTACK=0.75, RELEASE=0.15, STEP_UP_MAX=0.12, STEP_DOWN_MAX=0.015, DOWN_DEAD_BAND=0.04;
-let env=0, prevTarget=0, med=[];
+// ===== Inject pitch bridge into AERIAL (autocorrelation) =====
+aerialFrame.addEventListener('load', ()=>{ try{ const d=aerialFrame.contentDocument; const s=d.createElement('script'); s.type='text/javascript'; s.text=`
+  (function(){
+    let analyser=null, hooked=false, ctx=null;
+    function loop(a, ctx){ const N=2048, buf=new Float32Array(N), sr=ctx.sampleRate||48000;
+      const step=()=>{ a.getFloatTimeDomainData(buf); let rms=0; for(let i=0;i<N;i++) rms+=buf[i]*buf[i]; rms=Math.sqrt(rms/N);
+        if(rms>0.004){ let mean=0; for(let i=0;i<N;i++) mean+=buf[i]; mean/=N; for(let i=0;i<N;i++) buf[i]-=mean;
+          let best=-1, bc=0; for(let off=20; off<N/2; off++){ let c=0; for(let i=0;i<N-off;i++) c+=buf[i]*buf[i+off]; c/=(N-off); if(c>bc){ bc=c; best=off; } }
+          if(best>0){ const hz=sr/best; try{ parent.postMessage({type:'AERIAL_PITCH_HZ', hz}, '*'); }catch{} }
+        }
+        requestAnimationFrame(step);
+      }; requestAnimationFrame(step); }
+    function hook(){ const cs=[window.masterGain, window.master, window.MainGain, window.master_out, window.gMaster];
+      for(const g of cs){ try{ if(g && g.context && g.gain){ ctx=g.context; const tee=ctx.createGain(); tee.gain.value=1; try{ g.disconnect(); }catch{} g.connect(tee); tee.connect(ctx.destination); analyser=ctx.createAnalyser(); analyser.fftSize=2048; tee.connect(analyser); hooked=true; loop(analyser, ctx); return true; } }catch{} } return false; }
+    if(!hook()){ const _c=AudioNode.prototype.connect; AudioNode.prototype.connect=function(){ try{ const ctx=this.context; for(let i=0;i<arguments.length;i++){ if(arguments[i]===ctx.destination && !hooked){ const tee=ctx.createGain(); tee.gain.value=1; _c.call(this, tee); _c.call(tee, ctx.destination); analyser=ctx.createAnalyser(); analyser.fftSize=2048; _c.call(tee, analyser); hooked=true; loop(analyser, ctx); return; } } }catch{} return _c.apply(this, arguments); }; }
+  })();
+`; d.head.appendChild(s); }catch(_ ){} });
+
+// ===== Parent: map pitch -> KB (enlarge fast, shrink slow, deadband) =====
+const FMIN=120, FMAX=1800, ATTACK=0.75, RELEASE=0.15, STEP_UP=0.12, STEP_DOWN=0.015, DEAD=0.04;
+let env=0, prev=0, med=[];
 function hz2norm(hz){ const c=Math.max(FMIN, Math.min(FMAX, hz||FMIN)); return (Math.log(c)-Math.log(FMIN))/(Math.log(FMAX)-Math.log(FMIN)); }
 function applyPitch(hz){ let n=hz2norm(hz); med.push(n); if(med.length>5) med.shift(); const mid=[...med].sort((a,b)=>a-b)[Math.floor(med.length/2)];
-  const up=Math.min(mid-prevTarget, STEP_UP_MAX), dn=Math.max(mid-prevTarget,-STEP_DOWN_MAX); let target = (mid>=prevTarget)? (prevTarget+up) : (prevTarget+dn);
-  if(target<env && (env-target)<DOWN_DEAD_BAND) target=env; const coeff=(target>=env)? ATTACK:RELEASE; env = env + (target-env)*coeff; prevTarget=target;
+  const up=Math.min(mid-prev, STEP_UP), dn=Math.max(mid-prev, -STEP_DOWN); let target=(mid>=prev)? (prev+up):(prev+dn);
+  if(target<env && (env-target)<DEAD) target=env; const coeff=(target>=env)? ATTACK:RELEASE; env=env+(target-env)*coeff; prev=target;
   try{ kbFrame.contentWindow.postMessage({type:'PITCH_NORM', v: env}, '*'); }catch(_ ){}
 }
-window.addEventListener('message', (e)=>{ if(e && e.data && e.data.type==='AERIAL_PITCH_HZ' && typeof e.data.hz==='number' && e.data.hz>0) applyPitch(e.data.hz); });
+window.addEventListener('message', (e)=>{ if(e?.data?.type==='AERIAL_PITCH_HZ' && typeof e.data.hz==='number' && e.data.hz>0) applyPitch(e.data.hz); });
 
-// Drag panel
+// ===== Inject scaling handler into KB (robust target detect) =====
+kbFrame.addEventListener('load', ()=>{ try{ const d=kbFrame.contentDocument; const s=d.createElement('script'); s.type='text/javascript'; s.text=`
+  (function(){
+    let target = document.querySelector('canvas') || document.getElementById('stage') || document.getElementById('container') || document.body;
+    if(target && target.style){ target.style.transformOrigin='50% 50%'; target.style.willChange='transform'; }
+    window.addEventListener('message', (e)=>{ if(e?.data?.type==='PITCH_NORM' && typeof e.data.v==='number'){ var sc=1+0.35*Math.max(0,Math.min(1,e.data.v)); if(target && target.style) target.style.transform='scale('+sc+')'; } });
+  })();
+`; d.head.appendChild(s); }catch(_ ){} });
+
+// ===== Drag panel =====
 (function(){ const drag=document.getElementById('drag'); let sx=0, sy=0, ox=0, oy=0, on=false;
   drag.addEventListener('pointerdown', (e)=>{ on=true; drag.setPointerCapture(e.pointerId); const r=panel.getBoundingClientRect(); ox=r.left; oy=r.top; sx=e.clientX; sy=e.clientY; document.body.style.cursor='grabbing'; });
   drag.addEventListener('pointermove', (e)=>{ if(!on) return; const dx=e.clientX-sx, dy=e.clientY-sy; panel.style.left=Math.max(8, Math.min(innerWidth-panel.offsetWidth-8, ox+dx))+'px'; panel.style.top=Math.max(8, Math.min(innerHeight-panel.offsetHeight-8, oy+dy))+'px'; panel.style.right='auto'; panel.style.bottom='auto'; });
