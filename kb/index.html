@@ -17,7 +17,7 @@ const cv=document.getElementById('cv'), ctx=cv.getContext('2d',{alpha:false});
 function fit(){ cv.width=innerWidth*devicePixelRatio; cv.height=innerHeight*devicePixelRatio; }
 addEventListener('resize', fit, {passive:true}); fit();
 
-let env=0; // 0..1 from parent
+let env=0;
 window.addEventListener('message', (e)=>{
   if(e && e.data && e.data.type==='PITCH_NORM' && typeof e.data.v==='number'){
     env = Math.max(0, Math.min(1, e.data.v));
@@ -66,7 +66,7 @@ function loop(){
     if(s.y<s.r){ s.y=s.r; s.vy=Math.abs(s.vy); } if(s.y>h-s.r){ s.y=h-s.r; s.vy=-Math.abs(s.vy); }
     s.vx*=0.992; s.vy*=0.992;
     const base = s.r;
-    const scale = 1 + env*0.35; // 高い音ほどただ大きく
+    const scale = 1 + env*0.35;
     const r = base*scale;
     ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.rot);
     ctx.lineJoin="round"; ctx.lineCap="round";
