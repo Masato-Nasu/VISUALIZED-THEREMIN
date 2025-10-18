@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Theremin Fusion</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./styles.css">
+  <meta name="theme-color" content="#111114">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Theremin Fusion</h1>
+      <div class="controls">
+        <span class="badge">画面タップ/シェイクで🔔</span>
+        <button id="startBtn" class="btn">▶ サウンド開始</button>
+        <button id="recBtn" class="btn">● REC</button>
+        <label class="label-file btn">
+          🎵 BGM選択
+          <input id="bgmFile" type="file" accept="audio/*">
+        </label>
+        <label class="btn small"><input type="checkbox" checked onchange="toggleTheremin(this)"> Theremin</label>
+        <label class="btn small"><input type="checkbox" onchange="playPauseBgm(this)"> BGM</label>
+      </div>
+    </header>
+
+    <div class="main">
+      <canvas id="viz"></canvas>
+    </div>
+
+    <footer>
+      <div class="controls">
+        <div>Freq: <span id="freqMinVal">100</span>Hz <input id="freqMin" type="range" min="50" max="1500" step="10" value="100"> <input id="freqMax" type="range" min="200" max="4000" step="10" value="1800"> <span id="freqMaxVal">1800</span>Hz</div>
+        <div>Gain Max: <span id="gainMaxVal">0.80</span> <input id="gainMax" type="range" min="0.05" max="1.0" step="0.01" value="0.80"></div>
+        <div>Smooth: <span id="smoothVal">0.12</span> <input id="smooth" type="range" min="0.05" max="0.5" step="0.01" value="0.12"></div>
+      </div>
+      <div class="small">操作: スマホ→端末の傾きで音程(ピッチ)と音量、デスクトップ→キャンバス上のマウスYで音程・Xで音量。PWAインストール可。</div>
+    </footer>
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>
