@@ -1,10 +1,10 @@
 {
-  "name": "KB × AERIAL Merge",
-  "short_name": "KB×AERIAL",
-  "start_url": "./index.html?v=5",
+  "name": "AERIAL v22.2",
+  "short_name": "AERIAL",
+  "start_url": "./index.html?v=22.2",
   "display": "standalone",
-  "background_color": "#0b0c10",
-  "theme_color": "#0b0c10",
+  "background_color": "#0b0d11",
+  "theme_color": "#0b0d11",
   "icons": [
     {
       "src": "icon-192.png",

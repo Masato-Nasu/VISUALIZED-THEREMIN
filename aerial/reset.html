@@ -1,0 +1,16 @@
+<!doctype html>
+<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>AERIAL Reset</title></head>
+<body style="background:#0b0d11;color:#e6e6e6;font-family:system-ui">
+<h2>Resetting Service Workers & Caches...</h2>
+<p>完了後、自動的に最新の v21.7 へ遷移します。</p>
+<script>
+(async()=>{
+  try{
+    if('serviceWorker' in navigator){ const regs = await navigator.serviceWorker.getRegistrations(); for(const r of regs) await r.unregister(); }
+    if('caches' in window){ for(const k of await caches.keys()) await caches.delete(k); }
+  }catch(e){}
+  location.replace('./hum-theremin-recorder.html?v=21.7&bust='+Date.now());
+})();
+</script>
+</body></html>

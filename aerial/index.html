@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ja"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta http-equiv="cache-control" content="no-store, max-age=0"/>
+<title>AERIAL v22.2</title>
+<link rel="manifest" href="manifest.json?v=22.2"/>
+<link rel="icon" href="icon-192.png" sizes="192x192"/>
+<style>
+  body{margin:0;background:#0b0d11;color:#e6e6e6;font-family:system-ui,-apple-system,'Noto Sans JP',sans-serif}
+  .wrap{min-height:100vh;display:grid;place-items:center;padding:24px}
+  a{color:#8fd3ff;text-decoration:none;padding:10px 14px;border:1px solid #253043;border-radius:10px;background:#0f1320}
+  .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+</style>
+</head><body>
+<div class="wrap">
+  <div>
+    <h1 style="margin:0 0 12px">AERIAL v22.2</h1>
+    <p><a href="hum-theremin-recorder.html?v=22.2&bust='+Date.now()+'">▶ 起動</a></p>
+  </div>
+</div>
+<script>
+if('serviceWorker' in navigator){
+  addEventListener('load', async ()=>{ try{ await navigator.serviceWorker.register('./sw.js?v=22.2&bust='+Date.now()); }catch(e){} });
+}
+</script>
+</body></html>

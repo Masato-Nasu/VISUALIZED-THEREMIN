@@ -3,33 +3,56 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>KB × AERIAL (Theremin)</title>
+  <title>KB × AERIAL Merge</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0b0c10">
-  <link rel="stylesheet" href="./style.css">
+  <style>
+    :root{ --bg:#0b0c10; --fg:#e8e8f0; }
+    html,body{ margin:0; height:100%; background:var(--bg); color:var(--fg); touch-action:manipulation; }
+    #kbFrame{ position:fixed; inset:0; width:100%; height:100%; border:0; }
+    #panel{ position:fixed; right:16px; bottom:16px; width:min(520px,96vw); height:min(70vh,560px);
+            background:#000; border:1px solid #2a2a33; border-radius:14px; overflow:hidden;
+            box-shadow:0 16px 48px rgba(0,0,0,.5); display:none; }
+    #drag{ position:absolute; inset:0 0 auto 0; height:24px; background:#111114; color:#9aa0a6; font:12px/24px ui-sans-serif; padding-left:10px; cursor:move; z-index:2; }
+    #aerialFrame{ position:absolute; inset:24px 0 0 0; width:100%; height:calc(100% - 24px); border:0; background:#0b0d11; }
+    #hint{ position:fixed; right:10px; bottom:10px; font:600 12px ui-sans-serif; color:#cfd3ff; opacity:.85; background:#111114aa; padding:6px 8px; border-radius:10px; border:1px solid #2a2a33; }
+    .grabbing{ cursor:grabbing!important; }
+  </style>
 </head>
 <body>
-  <div id="stage">
-    <canvas id="canvas"></canvas>
+  <iframe id="kbFrame" src="./kb/index.html"></iframe>
+  <div id="panel">
+    <div id="drag">AERIAL 操作パネル（二本指タッチで表示/非表示・ドラッグで移動）</div>
+    <iframe id="aerialFrame" src="./aerial/index.html"></iframe>
   </div>
-
-  <!-- Overlay: two-finger touch to toggle -->
-  <div id="hint">
-    <div class="card">
-      <div>二本指タッチでこの操作パネルを表示/非表示できます。<br>1回タップして開始、以降は端末の傾きで演奏。</div>
-      <button id="start" class="btn">▶ サウンド開始</button>
-      <div style="margin-top:8px;">
-        <label class="btn" for="bgm">🎵 BGM</label>
-        <input id="bgm" type="file" accept="audio/*" class="hidden">
-        <button id="tap" class="btn">🔔 チャイム</button>
-        <button id="rec" class="btn">● REC / ■ STOP</button>
-      </div>
-      <div style="margin-top:6px; font-size:12px; opacity:.8;">PCはキャンバス上のマウス移動（縦=音程／横=音量）</div>
-    </div>
-  </div>
-
-  <div class="badge">✌ 二本指タッチで操作パネル</div>
-
-  <script src="./app.js"></script>
+  <div id="hint">✌ 二本指タッチで操作パネル</div>
+  <script>
+    if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js"); }
+    const panel = document.getElementById('panel');
+    let last=0;
+    document.addEventListener('touchstart', (e)=>{
+      const now=performance.now();
+      if(e.touches && e.touches.length>=2 && now-last>500){ last=now; panel.style.display = (panel.style.display==="block")? "none":"block"; }
+    }, {passive:true});
+    // Drag
+    (function(){
+      const drag=document.getElementById('drag');
+      let sx=0, sy=0, ox=0, oy=0, on=false;
+      drag.addEventListener('pointerdown', (e)=>{
+        on=true; drag.setPointerCapture(e.pointerId);
+        const r=panel.getBoundingClientRect(); ox=r.left; oy=r.top; sx=e.clientX; sy=e.clientY;
+        document.body.classList.add('grabbing');
+      });
+      drag.addEventListener('pointermove', (e)=>{
+        if(!on) return;
+        const dx=e.clientX-sx, dy=e.clientY-sy;
+        panel.style.left=Math.max(8, Math.min(window.innerWidth-panel.offsetWidth-8, ox+dx))+"px";
+        panel.style.top=Math.max(8, Math.min(window.innerHeight-panel.offsetHeight-8, oy+dy))+"px";
+        panel.style.right="auto"; panel.style.bottom="auto";
+      });
+      drag.addEventListener('pointerup', ()=>{ on=false; document.body.classList.remove('grabbing'); });
+      drag.addEventListener('pointercancel', ()=>{ on=false; document.body.classList.remove('grabbing'); });
+    })();
+  </script>
 </body>
 </html>
