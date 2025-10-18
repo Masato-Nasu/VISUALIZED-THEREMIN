@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Motion Theremin + Shake Chime + BGM</title>
+<meta name="theme-color" content="#111317">
+<link rel="manifest" href="./manifest.json?v=202510180427">
+<style>
+  :root {
+    --fg: #eaeaea;
+    --muted: #9aa0a6;
+    --accent: #4da3ff;
+    --bg: #111317;
+  }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family: system-ui, -apple-system, "Helvetica Neue", Helvetica, Arial, "Noto Sans JP", sans-serif;}
+  #stage{position:fixed;inset:0;display:block;width:100vw;height:100vh;touch-action:none;}
+  #ui{
+    position: fixed; left: 12px; right: 12px; bottom: 12px;
+    display: grid; gap: 8px; grid-template-columns: 1fr; z-index: 10;
+  }
+  .card{
+    background: rgba(0,0,0,.45); backdrop-filter: blur(6px);
+    border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 10px 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  }
+  label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
+  input[type="range"]{width:100%}
+  #topbar{
+    position: fixed; top: 10px; left: 10px; right: 10px; display:flex; gap:8px; align-items:center; z-index: 11;
+  }
+  .btn{
+    appearance:none; border:1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.06);
+    color: var(--fg); padding: 10px 12px; border-radius: 12px; font-weight:600; cursor:pointer;
+  }
+  .btn:active{transform: translateY(1px)}
+  .small{font-size:12px;padding:8px 10px}
+  #hint{
+    position: fixed; inset: 0; display:flex; align-items:center; justify-content:center; text-align:center; z-index: 12;
+    background: radial-gradient(1200px 1200px at 50% 50%, rgba(77,163,255,.08), transparent 60%), rgba(0,0,0,.55);
+    padding: 24px;
+  }
+  #hint .box{
+    max-width: 560px; border:1px solid rgba(255,255,255,.12); border-radius:16px; padding:18px 16px; background: rgba(0,0,0,.5)
+  }
+  #hint p{margin:.5em 0; color:#cfd8dc}
+  #permStatus{font-size:12px;color:var(--muted)}
+  a.link{color:var(--accent); text-decoration:none; border-bottom:1px dotted var(--accent)}
+  #miniLevels{
+    position: fixed; right: 10px; bottom: 10px; z-index: 9; opacity:.85;
+    display:flex; gap:6px; align-items:flex-end; height:40px;
+  }
+  .bar{width:6px; background:#4da3ff33; border:1px solid #4da3ff66; border-radius:3px}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<div id="topbar">
+  <button id="startBtn" class="btn">タップして開始（音を解放）</button>
+  <button id="permBtn" class="btn small">センサー許可</button>
+  <button id="uiToggle" class="btn small">UI表示/非表示</button>
+  <span id="permStatus"></span>
+</div>
+
+<div id="ui">
+  <div class="card">
+    <label>音楽ファイル（任意・1曲）</label>
+    <input id="musicFile" type="file" accept="audio/*">
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <button id="bgmPlay" class="btn small">BGM 再生/一時停止</button>
+      <label style="display:flex;align-items:center;gap:6px">
+        <span class="small">ループ</span><input id="bgmLoop" type="checkbox" checked>
+      </label>
+    </div>
+  </div>
+  <div class="card" style="display:grid;gap:6px">
+    <div>
+      <label>Master 音量</label>
+      <input id="volMaster" type="range" min="0" max="1" step="0.001" value="0.8">
+    </div>
+    <div>
+      <label>Theremin 音量</label>
+      <input id="volTheremin" type="range" min="0" max="1" step="0.001" value="0.6">
+    </div>
+    <div>
+      <label>BGM 音量</label>
+      <input id="volBgm" type="range" min="0" max="1" step="0.001" value="0.5">
+    </div>
+    <div>
+      <label>チャイム 音量（振ると鳴る）</label>
+      <input id="volChime" type="range" min="0" max="1" step="0.001" value="0.8">
+    </div>
+  </div>
+  <div class="card">
+    <div style="font-size:12px; line-height:1.5">
+      操作ガイド：<br/>
+      ・端末の傾きでテルミン（ピッチ/音量）を操作<br/>
+      ・端末を<strong>強く振る</strong>とチャイムが鳴ります<br/>
+      ・画面は音量と周波数に<strong>連動アニメ</strong><br/>
+      ・BGMは任意の音源を選んで同時再生
+    </div>
+  </div>
+</div>
+
+<div id="hint" hidden>
+  <div class="box">
+    <h3 style="margin:.2em 0">ご利用前の許可について</h3>
+    <p>iOS Safari 等では、<strong>ユーザー操作後</strong>でないと音声・センサーが有効になりません。</p>
+    <p>まず「タップして開始（音を解放）」→「センサー許可」の順に押してください。</p>
+    <p style="margin-top:10px"><span id="envInfo"></span></p>
+  </div>
+</div>
+
+<div id="miniLevels" aria-hidden="true"></div>
+
+<audio id="bgm" preload="none" crossorigin="anonymous"></audio>
+
+<script>
+(() => {
+  const VERSION = "202510180427";
+  // ---------- Service Worker Registration ----------
+  if ("serviceWorker" in navigator) {
+    addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js?ver=" + VERSION).catch(()=>{});
+    });
+  }
+
+  // ---------- Utilities ----------
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const lerp = (a,b,t)=>a+(b-a)*t;
+  const now = () => performance.now();
+
+  // ---------- Canvas / Visual ----------
+  const canvas = document.getElementById('stage');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const resize = () => {
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    canvas.width  = Math.floor(innerWidth  * dpr);
+    canvas.height = Math.floor(innerHeight * dpr);
+    canvas.style.width  = innerWidth + 'px';
+    canvas.style.height = innerHeight + 'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  };
+  addEventListener('resize', resize, {passive:true});
+  resize();
+
+  // ---------- Audio Graph ----------
+  let actx, master, gainTheremin, gainChime, gainBgm, analyser, dataArr;
+  let oscTheremin, thereminOn = false;
+
+  function setupAudio(){
+    if(actx) return;
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    master = actx.createGain();
+    master.gain.value = Number(document.getElementById('volMaster').value);
+
+    analyser = actx.createAnalyser();
+    analyser.fftSize = 1024;
+    dataArr = new Uint8Array(analyser.frequencyBinCount);
+
+    // Theremin
+    gainTheremin = actx.createGain(); gainTheremin.gain.value = Number(document.getElementById('volTheremin').value);
+    oscTheremin = actx.createOscillator();
+    oscTheremin.type = 'sine';
+    oscTheremin.frequency.value = 220;
+    oscTheremin.connect(gainTheremin);
+
+    // Chime
+    gainChime = actx.createGain(); gainChime.gain.value = Number(document.getElementById('volChime').value);
+
+    // BGM
+    gainBgm = actx.createGain(); gainBgm.gain.value = Number(document.getElementById('volBgm').value);
+
+    // connections
+    const chimeBus = actx.createGain();
+    chimeBus.connect(gainChime);
+
+    const merger = actx.createGain();
+    gainTheremin.connect(merger);
+    gainBgm.connect(merger);
+    chimeBus.connect(merger);
+
+    merger.connect(analyser);
+    analyser.connect(master);
+    master.connect(actx.destination);
+
+    oscTheremin.start();
+
+    setupAudio._chimeBus = chimeBus;
+  }
+
+  // ---------- BGM handling ----------
+  const bgmEl = document.getElementById('bgm');
+  let bgmSourceNode = null;
+  function connectBgmEl(){
+    if(!actx) return;
+    if(bgmSourceNode) { try{ bgmSourceNode.disconnect(); } catch(e){} }
+    const src = actx.createMediaElementSource(bgmEl);
+    bgmSourceNode = src;
+    src.connect(gainBgm);
+  }
+
+  document.getElementById('musicFile').addEventListener('change', e=>{
+    const f = e.target.files?.[0];
+    if(!f) return;
+    const url = URL.createObjectURL(f);
+    bgmEl.src = url;
+    bgmEl.loop = document.getElementById('bgmLoop').checked;
+    bgmEl.play().catch(()=>{});
+    connectBgmEl();
+  });
+
+  document.getElementById('bgmLoop').addEventListener('change', e=>{
+    bgmEl.loop = e.target.checked;
+  });
+
+  document.getElementById('bgmPlay').addEventListener('click', ()=>{
+    if(!actx) setupAudio();
+    actx.resume();
+    connectBgmEl();
+    if(bgmEl.paused) bgmEl.play().catch(()=>{}); else bgmEl.pause();
+  });
+
+  // ---------- Permissions ----------
+  const permBtn = document.getElementById('permBtn');
+  const permStatus = document.getElementById('permStatus');
+  const hint = document.getElementById('hint');
+  const envInfo = document.getElementById('envInfo');
+  envInfo.textContent = navigator.userAgent;
+
+  async function requestSensors(){
+    try{
+      if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+        const s1 = await DeviceMotionEvent.requestPermission();
+        if(s1 !== 'granted') throw new Error('DeviceMotion 未許可');
+      }
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const s2 = await DeviceOrientationEvent.requestPermission();
+        if(s2 !== 'granted') throw new Error('DeviceOrientation 未許可');
+      }
+      permStatus.textContent = 'センサー許可 OK';
+      hint.hidden = true;
+    }catch(err){
+      permStatus.textContent = 'センサー許可が必要です';
+      hint.hidden = false;
+    }
+  }
+  permBtn.addEventListener('click', requestSensors);
+
+  // ---------- Start (unlock audio) ----------
+  const startBtn = document.getElementById('startBtn');
+  startBtn.addEventListener('click', async ()=>{
+    setupAudio();
+    await actx.resume();
+    hint.hidden = false;
+  });
+
+  // ---------- Controls ----------
+  document.getElementById('volMaster').addEventListener('input', e=>{ if(master) master.gain.value = Number(e.target.value); });
+  document.getElementById('volTheremin').addEventListener('input', e=>{ if(gainTheremin) gainTheremin.gain.value = Number(e.target.value); });
+  document.getElementById('volBgm').addEventListener('input', e=>{ if(gainBgm) gainBgm.gain.value = Number(e.target.value); });
+  document.getElementById('volChime').addEventListener('input', e=>{ if(gainChime) gainChime.gain.value = Number(e.target.value); });
+
+  // ---------- Theremin mapping (smooth) ----------
+  let smooth = { beta: 0, gamma: 0, alpha: 0 };
+  const k = { beta: 0.12, gamma: 0.12, alpha: 0.08 };
+
+  let lastAlpha = null, alphaOffset = 0;
+  function unwrapAlpha(a){
+    if(lastAlpha==null){ lastAlpha = a; return a; }
+    let da = a - lastAlpha;
+    if(da > 180) alphaOffset -= 360;
+    else if(da < -180) alphaOffset += 360;
+    lastAlpha = a;
+    return a + alphaOffset;
+  }
+
+  addEventListener('deviceorientation', (ev)=>{
+    const beta = (ev.beta ?? 0);
+    const gamma = (ev.gamma ?? 0);
+    const alpha = unwrapAlpha((ev.alpha ?? 0));
+    smooth.beta = lerp(smooth.beta, beta, k.beta);
+    smooth.gamma = lerp(smooth.gamma, gamma, k.gamma);
+    smooth.alpha = lerp(smooth.alpha, alpha, k.alpha);
+
+    const betaNorm = Math.min(1, Math.max(0, (smooth.beta + 180) / 360));
+    const betaCurve = Math.sin(betaNorm * Math.PI);
+    const freq = 110 + betaCurve * (1200 - 110);
+
+    const gammaNorm = Math.min(1, Math.max(0, (Math.abs(smooth.gamma) / 90)));
+    const vol = Math.pow(gammaNorm, 0.7);
+
+    if(oscTheremin && gainTheremin){
+      try{
+        oscTheremin.frequency.setTargetAtTime(freq, actx.currentTime, 0.02);
+        gainTheremin.gain.setTargetAtTime(vol * Number(document.getElementById('volTheremin').value), actx.currentTime, 0.03);
+      }catch(e){}
+    }
+  }, { passive:true });
+
+  // ---------- Shake detection -> Chime ----------
+  let shakeEnergy = 0, lastShakeT = 0;
+  const SHAKE_DECAY = 0.98;
+  const SHAKE_GAIN = 0.25;
+  const SHAKE_THRESH = 14;
+
+  addEventListener('devicemotion', (ev)=>{
+    const a = ev.accelerationIncludingGravity || ev.acceleration || {x:0,y:0,z:0};
+    const mag = Math.hypot(a.x||0, a.y||0, a.z||0);
+    shakeEnergy = shakeEnergy * SHAKE_DECAY + mag * SHAKE_GAIN;
+    const t = performance.now();
+    if (shakeEnergy > SHAKE_THRESH && (t - lastShakeT) > 600) {
+      lastShakeT = t;
+      triggerChime();
+    }
+  }, { passive:true });
+
+  function triggerChime(){
+    if(!actx) return;
+    const t0 = actx.currentTime;
+    const partials = [
+      {ratio:1.00, gain:0.9},
+      {ratio:2.00, gain:0.35},
+      {ratio:2.40, gain:0.25},
+      {ratio:3.00, gain:0.18},
+      {ratio:4.20, gain:0.12},
+    ];
+    const baseFreq = 880;
+
+    partials.forEach((p,i)=>{
+      const o = actx.createOscillator();
+      const g = actx.createGain();
+      o.type = 'sine';
+      o.frequency.value = baseFreq * p.ratio;
+      const aTime = 0.005, dTime = 1.0 + i*0.05;
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(p.gain, t0 + aTime);
+      g.gain.exponentialRampToValueAtTime(0.0005, t0 + dTime);
+      o.connect(g).connect(gainChime).connect(master);
+      o.start(t0);
+      o.stop(t0 + dTime + 0.05);
+    });
+  }
+
+  // ---------- Visuals ----------
+  const bars = Array.from({length: 24}, ()=>0);
+  const mini = document.getElementById('miniLevels');
+  const miniBars = bars.map(()=> {
+    const d = document.createElement('div');
+    d.className = 'bar';
+    mini.appendChild(d);
+    return d;
+  });
+
+  function render(){
+    requestAnimationFrame(render);
+    let amp = 0;
+    if(analyser){
+      const dataArr = new Uint8Array(analyser.frequencyBinCount);
+      analyser.getByteFrequencyData(dataArr);
+      const N = dataArr.length;
+      const step = Math.floor(N / bars.length);
+      for(let i=0;i<bars.length;i++){ let s=0; for(let j=0;j<step;j++) s += dataArr[i*step + j]; bars[i] = lerp(bars[i], s/(step*255), 0.35); }
+      amp = bars.reduce((a,b)=>a+b,0)/bars.length;
+      bars.forEach((v,i)=>{ const h = Math.max(4, Math.min(40, Math.round(v*40))); miniBars[i].style.height = h + 'px'; miniBars[i].style.background = 'rgba(77,163,255,' + (0.25 + v*0.6) + ')'; });
+    }
+
+    const w = canvas.width / (canvas.clientWidth ? (canvas.width/canvas.clientWidth) : 1);
+    const h = canvas.height / (canvas.clientHeight ? (canvas.height/canvas.clientHeight) : 1);
+    const ctx = canvas.getContext('2d');
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    const cx = w/2, cy = h/2;
+    const time = performance.now()*0.001;
+    const freq = (window.oscTheremin?.frequency?.value || 220);
+    const pulse = 0.6 + 0.4 * Math.sin(time*2 + freq*0.002);
+    const rad = Math.min(w,h) * (0.22 + 0.18*pulse + 0.22*amp);
+
+    const grd = ctx.createRadialGradient(cx,cy,rad*0.5, cx,cy,rad*1.4);
+    grd.addColorStop(0, 'rgba(77,163,255,0.35)');
+    grd.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grd;
+    ctx.beginPath(); ctx.arc(cx,cy,rad*1.4,0,Math.PI*2); ctx.fill();
+
+    ctx.beginPath(); ctx.arc(cx,cy,rad,0,Math.PI*2);
+    ctx.fillStyle = 'rgba(77,163,255,0.12)';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(77,163,255,0.65)';
+    ctx.stroke();
+
+    const spokes = 16;
+    const yaw = (window.smooth?.alpha || 0);
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.rotate((yaw*Math.PI/180) * 0.2 + time*0.2*(0.2+amp));
+    for(let i=0;i<spokes;i++){ 
+      const a = i*(Math.PI*2/spokes);
+      const len = rad * (0.6 + 0.4*bars[i%bars.length]);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a)* (rad*0.2), Math.sin(a)*(rad*0.2));
+      ctx.lineTo(Math.cos(a)* (len+rad*0.25), Math.sin(a)*(len+rad*0.25));
+      ctx.strokeStyle = 'rgba(77,163,255,' + (0.25 + bars[i%bars.length]*0.6) + ')';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  render();
+
+  // ---------- UI show/hide ----------
+  const ui = document.getElementById('ui');
+  const uiToggle = document.getElementById('uiToggle');
+  let uiVisible = true;
+  uiToggle.addEventListener('click', ()=>{
+    uiVisible = !uiVisible;
+    ui.style.display = uiVisible ? 'grid' : 'none';
+  });
+
+  const canvasEl = document.getElementById('stage');
+  canvasEl.addEventListener('pointerdown', ()=>{ triggerChime(); }, {passive:true});
+})();
+</script>
+</body>
+</html>
