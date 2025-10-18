@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
-<title>Baby Theremin Shapes — v1.5.0</title>
-<link rel="manifest" href="./manifest.json?v=1.5.0">
+<title>Baby Theremin Shapes — v1.5.2</title>
+<link rel="manifest" href="./manifest.json?v=1.5.2">
 <meta name="theme-color" content="#1a1a1a">
 <style>
   :root{ --bg:#1a1a1a; --panel:#20232bcc; --text:#E8EAF2; --muted:#8b90a1; }
@@ -24,7 +24,7 @@
 </head>
 <body>
 <canvas id="cv"></canvas>
-<div class="hint" id="hint">👶 画面タッチで「ぽよん」／傾けるorドラッグで音と図形が変わるよ</div>
+<div class="hint" id="hint">👶 画面タッチで“ほわん”／上下ドラッグでピッチ、離すと静かになるよ</div>
 <div class="controls hidden" id="controls">
   <label class="btn">🎵 おんがくフォルダ<input id="audDir" type="file" webkitdirectory directory multiple accept="audio/*" hidden></label>
   <button id="prev" class="btn">← まえ</button>
@@ -33,161 +33,190 @@
   <div class="range">かず <input id="count" type="range" min="3" max="50" step="1" value="22"></div>
   <div class="range">せんの太さ <input id="thick" type="range" min="2" max="14" step="1" value="6"></div>
   <div class="range">ひかり <input id="glow" type="range" min="8" max="60" step="1" value="28"></div>
-  <div class="range">ピッチ最小Hz <input id="pmin" type="range" min="80" max="400" step="1" value="110"></div>
-  <div class="range">ピッチ最大Hz <input id="pmax" type="range" min="600" max="2400" step="1" value="1200"></div>
-  <div class="range">テルミン音量 <input id="tvol" type="range" min="0" max="1" step="0.01" value="0.25"></div>
-  <div class="range">ゆらぎ（強弱）<input id="trem" type="range" min="0" max="1" step="0.01" value="0.35"></div>
-  <div class="range">ゆらぎ速度<input id="tremSpd" type="range" min="0.1" max="4" step="0.01" value="0.8"></div>
-  <div class="range">二重 detune<input id="detune" type="range" min="0" max="20" step="0.1" value="6"></div>
+  <div class="range">ピッチ最小Hz <input id="pmin" type="range" min="80" max="400" step="1" value="120"></div>
+  <div class="range">ピッチ最大Hz <input id="pmax" type="range" min="500" max="2000" step="1" value="900"></div>
+  <div class="range">テルミン音量 <input id="tvol" type="range" min="0" max="1" step="0.01" value="0.22"></div>
+  <div class="range">ゆらぎ（強弱）<input id="trem" type="range" min="0" max="1" step="0.01" value="0.45"></div>
+  <div class="range">ゆらぎ速度<input id="tremSpd" type="range" min="0.1" max="3" step="0.01" value="0.7"></div>
+  <div class="range">二重 detune<input id="detune" type="range" min="0" max="20" step="0.1" value="7.5"></div>
+  <div class="range">ビブラート深さ<input id="vibDepth" type="range" min="0" max="18" step="0.1" value="3.5"></div>
+  <div class="range">ビブラート速度<input id="vibRate" type="range" min="0.5" max="8" step="0.01" value="5"></div>
+  <div class="range">フィルター明るさ<input id="bright" type="range" min="400" max="5000" step="1" value="1800"></div>
 </div>
 
 <script>
-(() => {
-  const cv = document.getElementById('cv');
-  const ctx = cv.getContext('2d', { alpha:false });
-  const controls = document.getElementById('controls');
-  const countUI = document.getElementById('count');
-  const thickUI = document.getElementById('thick');
-  const glowUI  = document.getElementById('glow');
-  const pminUI  = document.getElementById('pmin');
-  const pmaxUI  = document.getElementById('pmax');
-  const tvolUI  = document.getElementById('tvol');
-  const tremUI  = document.getElementById('trem');
-  const tremSpd = document.getElementById('tremSpd');
-  const detuneUI= document.getElementById('detune');
-  const hint    = document.getElementById('hint');
+(function(){
+  var cv = document.getElementById('cv');
+  var ctx = cv.getContext('2d', { alpha:false });
+  var controls = document.getElementById('controls');
+  var countUI = document.getElementById('count');
+  var thickUI = document.getElementById('thick');
+  var glowUI  = document.getElementById('glow');
+  var pminUI  = document.getElementById('pmin');
+  var pmaxUI  = document.getElementById('pmax');
+  var tvolUI  = document.getElementById('tvol');
+  var tremUI  = document.getElementById('trem');
+  var tremSpd = document.getElementById('tremSpd');
+  var detuneUI= document.getElementById('detune');
+  var vibDepth= document.getElementById('vibDepth');
+  var vibRate = document.getElementById('vibRate');
+  var bright  = document.getElementById('bright');
+  var hint    = document.getElementById('hint');
 
-  // 2本指長押しで設定トグル（誤操作防止 1.2s）
-  let activePointers = new Map();
-  let holdTimer = null;
-  function onPointerDown(e){
+  window.pitchHz = 440;
+
+  // settings toggle (two-finger 1.2s hold)
+  var activePointers = new Map();
+  var holdTimer = null;
+  function onPointerDownForMenu(e){
     activePointers.set(e.pointerId, {x:e.clientX,y:e.clientY});
     if(activePointers.size>=2 && !holdTimer){
-      holdTimer = setTimeout(()=>{ controls.classList.toggle('hidden'); }, 1200);
+      holdTimer = setTimeout(function(){ controls.classList.toggle('hidden'); }, 1200);
     }
   }
   function cancelHold(){ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } }
-  function onPointerUp(e){ activePointers.delete(e.pointerId); cancelHold(); }
-  function onPointerMove(e){
-    const p=activePointers.get(e.pointerId);
+  function onPointerUpForMenu(e){ activePointers.delete(e.pointerId); cancelHold(); }
+  function onPointerMoveForMenu(e){
+    var p=activePointers.get(e.pointerId);
     if(p){
-      const dx=Math.abs(e.clientX-p.x), dy=Math.abs(e.clientY-p.y);
+      var dx=Math.abs(e.clientX-p.x), dy=Math.abs(e.clientY-p.y);
       if(dx>20 || dy>20) cancelHold();
     }
   }
-  ['pointerdown','pointerup','pointercancel','pointermove'].forEach(ev=>{
-    cv.addEventListener(ev, (e)=>{
-      if(ev==='pointerdown') onPointerDown(e);
-      if(ev==='pointerup' || ev==='pointercancel') onPointerUp(e);
-      if(ev==='pointermove') onPointerMove(e);
+  ['pointerdown','pointerup','pointercancel','pointermove'].forEach(function(ev){
+    cv.addEventListener(ev, function(e){
+      if(ev==='pointerdown') onPointerDownForMenu(e);
+      if(ev==='pointerup' || ev==='pointercancel') onPointerUpForMenu(e);
+      if(ev==='pointermove') onPointerMoveForMenu(e);
     }, {passive:false});
   });
 
-  // 初回タップでフルスクリーン＆オーディオ解放
-  cv.addEventListener('pointerdown', async ()=>{
+  // First touch => fullscreen + audio unlock
+  cv.addEventListener('pointerdown', function(){
     if(!document.fullscreenElement){
-      try{ await document.documentElement.requestFullscreen(); }catch(_){}
+      try{ document.documentElement.requestFullscreen(); }catch(_){}
     }
     ensureAudio();
-    try{ if(actx.state!=='running') await actx.resume(); }catch(_){}
-    hint.remove();
+    try{ if(actx && actx.state!=='running') actx.resume(); }catch(_){}
+    if(hint && hint.parentNode) hint.parentNode.removeChild(hint);
   }, {once:true});
 
-  // ===== Audio (BGM + Theremin)
-  let audList=[], audIdx=0, audio=new Audio(); audio.preload="auto";
-  let actx, analyser, data, playing=false;
-  // Theremin nodes
-  let thMix, thAmp, oscA, oscB, lfo, lfoGain; 
+  // ===== Audio (softer "ほわん") =====
+  var audList=[], audIdx=0, audio=new Audio(); audio.preload="auto";
+  var actx=null, analyser=null;
+  var thMix=null, thFilter=null, thAmp=null, oscA=null, oscB=null, lfoTrem=null, lfoTremGain=null, lfoVib=null, lfoVibGain=null;
+  var envGain=null; var gate=0; // touch-to-play envelope
 
   function ensureAudio(){
     if(actx) return;
-    actx = new (window.AudioContext||window.webkitAudioContext)();
-    const src = actx.createMediaElementSource(audio);
+    var AC = window.AudioContext || window.webkitAudioContext;
+    actx = new AC();
+    var src = actx.createMediaElementSource(audio);
     analyser = actx.createAnalyser(); analyser.fftSize=256;
-    data = new Uint8Array(analyser.frequencyBinCount);
 
-    // Theremin voice: dual osc + tremolo LFO
-    thMix = actx.createGain();         // mix of A/B
-    thAmp = actx.createGain();         // final amplitude (to be LFO modulated)
-    thAmp.gain.value = parseFloat(tvolUI.value); // base set; will be modulated by LFO below
+    // Theremin chain: oscA+B -> mix -> lowpass -> envGain -> thAmp -> analyser -> destination
+    thMix    = actx.createGain();
+    thFilter = actx.createBiquadFilter(); thFilter.type='lowpass'; thFilter.frequency.value = parseFloat(bright.value);
+    envGain  = actx.createGain(); envGain.gain.value = 0.0; // start silent (touch-to-play)
+    thAmp    = actx.createGain(); thAmp.gain.value = parseFloat(tvolUI.value); // base master
 
     oscA = actx.createOscillator(); oscA.type='sine';
     oscB = actx.createOscillator(); oscB.type='sine';
 
-    // LFO for "ぅおんぅおん" amplitude wobble
-    lfo = actx.createOscillator(); lfo.type='sine';
-    lfoGain = actx.createGain();
-    // depth/ speed initial
-    lfo.frequency.value = parseFloat(tremSpd.value); // Hz
-    lfoGain.gain.value  = parseFloat(tvolUI.value) * parseFloat(tremUI.value) * 0.5; // depth
+    // Tremolo (amplitude wobble)
+    lfoTrem = actx.createOscillator(); lfoTrem.type='sine';
+    lfoTremGain = actx.createGain();
 
-    // baseline so that (baseline + lfo) stays around desired tvol
-    thAmp.gain.value = parseFloat(tvolUI.value) * (1 - 0.5*parseFloat(tremUI.value));
+    // Vibrato (pitch wobble)
+    lfoVib = actx.createOscillator(); lfoVib.type='sine';
+    lfoVibGain = actx.createGain();
 
-    // wire
+    // Wiring
     oscA.connect(thMix); oscB.connect(thMix);
-    thMix.connect(thAmp).connect(analyser).connect(actx.destination);
+    thMix.connect(thFilter).connect(envGain).connect(thAmp).connect(analyser).connect(actx.destination);
+    var aFreq = oscA.frequency; var bFreq = oscB.frequency;
+    lfoVib.connect(lfoVibGain);
+    lfoVibGain.connect(aFreq); lfoVibGain.connect(bFreq);
 
-    // LFO feeds amplitude param
-    lfo.connect(lfoGain).connect(thAmp.gain);
-    lfo.start();
+    lfoTrem.connect(lfoTremGain).connect(thAmp.gain);
 
-    oscA.start(); oscB.start();
+    src.connect(analyser);
+
+    // Start
+    oscA.start(); oscB.start(); lfoTrem.start(); lfoVib.start();
+
+    // Init params
+    updateDetune(); updateTrem(); updateVibrato(); updateBrightness();
   }
 
-  // live controls
+  // Params
   function updateDetune(){
     if(!oscA||!oscB) return;
-    const cents = parseFloat(detuneUI.value||"6");
+    var cents = parseFloat(detuneUI.value||"7.5");
     oscA.detune.value = -cents;
     oscB.detune.value =  cents;
   }
   function updateTrem(){
-    if(!lfo||!lfoGain||!thAmp) return;
-    const base = parseFloat(tvolUI.value);
-    const depth= parseFloat(tremUI.value);   // 0..1
-    const speed= parseFloat(tremSpd.value);  // Hz
-    lfo.frequency.setTargetAtTime(speed, actx.currentTime, 0.05);
-    lfoGain.gain.setTargetAtTime(base * depth * 0.5, actx.currentTime, 0.05);
-    thAmp.gain.setTargetAtTime(base * (1 - 0.5*depth), actx.currentTime, 0.05);
+    if(!lfoTrem||!lfoTremGain||!thAmp||!actx) return;
+    var base = parseFloat(tvolUI.value);
+    var depth= parseFloat(tremUI.value);     // 0..1
+    var speed= parseFloat(tremSpd.value);    // Hz
+    lfoTrem.frequency.setTargetAtTime(speed, actx.currentTime, 0.05);
+    // depthはベース音量に対する割合で設定
+    lfoTremGain.gain.setTargetAtTime(base * depth * 0.6, actx.currentTime, 0.05);
+    thAmp.gain.setTargetAtTime(base, actx.currentTime, 0.05);
   }
-  tvolUI.addEventListener('input', ()=>{ ensureAudio(); updateTrem(); });
-  tremUI.addEventListener('input', ()=>{ ensureAudio(); updateTrem(); });
-  tremSpd.addEventListener('input', ()=>{ ensureAudio(); updateTrem(); });
-  detuneUI.addEventListener('input', ()=>{ ensureAudio(); updateDetune(); });
+  function updateVibrato(){
+    if(!lfoVib||!lfoVibGain||!actx) return;
+    var depthCents = parseFloat(vibDepth.value); // cents
+    var rateHz     = parseFloat(vibRate.value);
+    lfoVib.frequency.setTargetAtTime(rateHz, actx.currentTime, 0.05);
+    // cents -> Hz modulation via detune AudioParam (connect directly is in cents)
+    lfoVibGain.gain.setTargetAtTime(depthCents, actx.currentTime, 0.05);
+  }
+  function updateBrightness(){
+    if(!thFilter||!actx) return;
+    thFilter.frequency.setTargetAtTime(parseFloat(bright.value), actx.currentTime, 0.05);
+  }
+  tvolUI.addEventListener('input', function(){ ensureAudio(); updateTrem(); });
+  tremUI.addEventListener('input', function(){ ensureAudio(); updateTrem(); });
+  tremSpd.addEventListener('input', function(){ ensureAudio(); updateTrem(); });
+  detuneUI.addEventListener('input', function(){ ensureAudio(); updateDetune(); });
+  vibDepth.addEventListener('input', function(){ ensureAudio(); updateVibrato(); });
+  vibRate.addEventListener('input', function(){ ensureAudio(); updateVibrato(); });
+  bright.addEventListener('input', function(){ ensureAudio(); updateBrightness(); });
 
-  ['click','touchstart','pointerdown'].forEach(ev=>{
-    window.addEventListener(ev, async ()=>{ ensureAudio(); try{ if(actx.state!=='running') await actx.resume(); }catch(_){ } }, {once:true, passive:true});
-  });
-
+  // BGM folder
   function naturalSort(a,b){ return a.name.localeCompare(b.name,'ja',{numeric:true}); }
-  document.getElementById('audDir').addEventListener('change', e=>{
+  document.getElementById('audDir').addEventListener('change', function(e){
     ensureAudio();
-    audList = [...e.target.files].filter(f=>f.type.startsWith('audio/')).sort(naturalSort);
+    audList = Array.prototype.slice.call(e.target.files).filter(function(f){return f.type.indexOf('audio/')===0;}).sort(naturalSort);
     audIdx=0; if(audList.length) playIndex(audIdx);
   });
-  async function playIndex(i){
+  function playIndex(i){
     if(!audList.length) return;
     audio.src = URL.createObjectURL(audList[i]);
-    try{ if(actx.state!=='running') await actx.resume(); await audio.play(); playing=true; }catch(e){}
+    ensureAudio();
+    try{ if(actx && actx.state!=='running') actx.resume(); audio.play(); }catch(e){}
   }
-  document.getElementById('next').addEventListener('click',()=>{ if(!audList.length)return; audIdx=(audIdx+1)%audList.length; playIndex(audIdx); });
-  document.getElementById('prev').addEventListener('click',()=>{ if(!audList.length)return; audIdx=(audIdx-1+audList.length)%audList.length; playIndex(audIdx); });
-  document.getElementById('play').addEventListener('click', async ()=>{
-    ensureAudio(); if(actx.state!=='running') await actx.resume();
-    if(audio.paused){ await audio.play(); playing=true; } else { audio.pause(); playing=false; }
+  document.getElementById('next').addEventListener('click',function(){ if(!audList.length)return; audIdx=(audIdx+1)%audList.length; playIndex(audIdx); });
+  document.getElementById('prev').addEventListener('click',function(){ if(!audList.length)return; audIdx=(audIdx-1+audList.length)%audList.length; playIndex(audIdx); });
+  document.getElementById('play').addEventListener('click', function(){
+    ensureAudio(); if(actx && actx.state!=='running') try{ actx.resume(); }catch(_){}
+    if(audio.paused){ try{ audio.play(); }catch(_){ } } else { audio.pause(); }
   });
-  audio.addEventListener('ended', ()=>{
+  audio.addEventListener('ended', function(){
     if(audList.length){ audIdx=(audIdx+1)%audList.length; playIndex(audIdx); }
     else { audio.currentTime=0; audio.play(); }
   });
 
   // ===== Canvas sizing
-  const dprCap=1.5;
+  var dprCap=1.5;
   function fit(){
-    const dpr=Math.min(window.devicePixelRatio||1, dprCap);
-    const w = Math.floor((window.visualViewport? visualViewport.width : window.innerWidth) * dpr);
-    const h = Math.floor((window.visualViewport? visualViewport.height: window.innerHeight) * dpr);
+    var dpr=Math.min(window.devicePixelRatio||1, dprCap);
+    var vw = (window.visualViewport? visualViewport.width : window.innerWidth);
+    var vh = (window.visualViewport? visualViewport.height: window.innerHeight);
+    var w = Math.floor(vw * dpr), h = Math.floor(vh * dpr);
     cv.width = Math.max(360, w);
     cv.height = Math.max(360, h);
   }
@@ -196,153 +225,132 @@
   if(window.visualViewport){ visualViewport.addEventListener('resize', fit, {passive:true}); }
 
   // ===== Shapes
-  const COLORS = ["#A5F3FC","#FBCFE8","#FDE68A","#C7D2FE","#86EFAC"];
-  const TYPES = ["circle","triangle","square","star","heart"];
-  const shapes=[];
-  function starPath(r, spikes=5){ const p=new Path2D(); const step=Math.PI/spikes; p.moveTo(r,0); for(let i=0;i<spikes*2;i++){ const rr=(i%2===0)?r:r*0.45; const a=i*step; p.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);} p.closePath(); return p; }
-  function heartPath(r){ const p=new Path2D(); p.moveTo(0,-r*0.2); p.bezierCurveTo(r*0.9,-r*0.9, r*1.4,r*0.5, 0,r*1.2); p.bezierCurveTo(-r*1.4,r*0.5, -r*0.9,-r*0.9, 0,-r*0.2); return p; }
-  const starCache=new Map(), heartCache=new Map();
-  function getStar(r){ const k=r|0; if(!starCache.has(k)) starCache.set(k, starPath(k)); return starCache.get(k); }
-  function getHeart(r){ const k=r|0; if(!heartCache.has(k)) heartCache.set(k, heartPath(k)); return heartCache.get(k); }
+  var COLORS = ["#A5F3FC","#FBCFE8","#FDE68A","#C7D2FE","#86EFAC"];
+  var TYPES = ["circle","triangle","square","star","heart"];
+  var shapes=[];
+  function starPath(r, spikes){ var p=new Path2D(); var step=Math.PI/spikes; p.moveTo(r,0); for(var i=0;i<spikes*2;i++){ var rr=(i%2===0)?r:r*0.45; var a=i*step; p.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);} p.closePath(); return p; }
+  function heartPath(r){ var p=new Path2D(); p.moveTo(0,-r*0.2); p.bezierCurveTo(r*0.9,-r*0.9, r*1.4,r*0.5, 0,r*1.2); p.bezierCurveTo(-r*1.4,r*0.5, -r*0.9,-r*0.9, 0,-r*0.2); return p; }
+  var starCache=new Map(), heartCache=new Map();
+  function getStar(r){ var k=r|0; if(!starCache.has(k)) starCache.set(k, starPath(k,5)); return starCache.get(k); }
+  function getHeart(r){ var k=r|0; if(!heartCache.has(k)) heartCache.set(k, heartPath(k)); return heartCache.get(k); }
 
   function resetShapes(){
     shapes.length=0;
-    const n=Math.max(3, (document.getElementById('count').value|0));
-    for(let i=0;i<n;i++){
-      const type=TYPES[i%TYPES.length];
-      const r=70*(0.6+Math.random()*0.6);
-      const x=Math.random()*cv.width, y=Math.random()*cv.height;
-      const rot=Math.random()*Math.PI*2;
-      const vx=(Math.random()-0.5)*0.5, vy=(Math.random()-0.5)*0.5;
-      const color=COLORS[i%COLORS.length];
-      shapes.push({type,x,y,r,rot,vx,vy,pulse:0,color});
+    var n=Math.max(3, (document.getElementById('count').value|0));
+    for(var i=0;i<n;i++){
+      var type=TYPES[i%TYPES.length];
+      var r=70*(0.6+Math.random()*0.6);
+      var x=Math.random()*cv.width, y=Math.random()*cv.height;
+      var rot=Math.random()*Math.PI*2;
+      var vx=(Math.random()-0.5)*0.5, vy=(Math.random()-0.5)*0.5;
+      var color=COLORS[i%COLORS.length];
+      shapes.push({type:type,x:x,y:y,r:r,rot:rot,vx:vx,vy:vy,pulse:0,color:color});
     }
   }
   document.getElementById('count').addEventListener('input', resetShapes);
   resetShapes();
 
-  // 画面タップでぽよん＆チャイム
-  const chime = new Audio("./Chime.mp3"); chime.volume = 0.25;
-  function toLocal(e){
-    const rect=cv.getBoundingClientRect();
-    return { x:(e.clientX-rect.left)/rect.width*cv.width, y:(e.clientY-rect.top)/rect.height*cv.height };
-  }
-  cv.addEventListener('pointerdown', (e)=>{
-    const p=toLocal(e);
-    for(const s of shapes){
-      const ang=Math.atan2(s.y-p.y, s.x-p.x);
-      const force=3.2 + Math.random()*1.8;
-      s.vx += Math.cos(ang)*force; s.vy += Math.sin(ang)*force;
-      s.pulse = Math.min(1, s.pulse+0.9);
-    }
-    try{ chime.currentTime=0; chime.play(); }catch(_){}
-  });
+  // ===== Touch-to-play: tap/drag gives attack; release gives soft release
+  var dragging=false;
+  cv.addEventListener('pointerdown', function(e){ dragging=true; ensureAudio(); onTouch(e); gateOn(); });
+  window.addEventListener('pointerup', function(){ dragging=false; gateOff(); });
+  cv.addEventListener('pointercancel', function(){ dragging=false; gateOff(); });
+  cv.addEventListener('pointermove', function(e){ if(dragging) onTouch(e); });
 
-  // ===== Theremin pitch control (傾き or ドラッグ)
-  let pitchHz = 440; // 現在ピッチ
+  function onTouch(e){
+    var r=cv.getBoundingClientRect();
+    var y=(e.clientY-r.top)/r.height; // 0..1
+    var beta=(y-0.5)*360;
+    setPitchFromBetaGamma(beta,0);
+  }
+  function gateOn(){
+    if(!actx||!envGain) return;
+    var t=actx.currentTime;
+    envGain.gain.cancelScheduledValues(t);
+    envGain.gain.setTargetAtTime(0.0,t,0.005);
+    envGain.gain.setTargetAtTime(1.0,t+0.005,0.06); // Attack ~60ms
+  }
+  function gateOff(){
+    if(!actx||!envGain) return;
+    var t=actx.currentTime;
+    envGain.gain.cancelScheduledValues(t);
+    envGain.gain.setTargetAtTime(0.0,t,0.12); // Release ~120ms
+  }
+
+  // ===== Pitch mapping (also drives filter brightness a bit)
   function setPitchFromBetaGamma(beta, gamma){
-    const pmin=parseFloat(pminUI.value), pmax=parseFloat(pmaxUI.value);
-    const betaNorm=Math.min(1,Math.max(0,(beta+180)/360));
-    const curve=Math.sin(betaNorm*Math.PI);
-    pitchHz = pmin + curve*(pmax-pmin);
-    // route to both oscillators
-    if(oscA && oscB){
-      const t=actx?.currentTime||0;
-      oscA.frequency.setTargetAtTime(pitchHz, t, 0.02);
-      oscB.frequency.setTargetAtTime(pitchHz, t, 0.02);
+    var pmin=parseFloat(pminUI.value), pmax=parseFloat(pmaxUI.value);
+    var betaNorm=Math.min(1,Math.max(0,(beta+180)/360));
+    var curve=Math.sin(betaNorm*Math.PI);
+    window.pitchHz = pmin + curve*(pmax-pmin);
+    if(actx && oscA && oscB){
+      var t=actx.currentTime;
+      oscA.frequency.setTargetAtTime(window.pitchHz, t, 0.02);
+      oscB.frequency.setTargetAtTime(window.pitchHz, t, 0.02);
+    }
+    // slight brightness track with pitch
+    if(actx && thFilter){
+      var base = parseFloat(bright.value);
+      thFilter.frequency.setTargetAtTime(base * (0.8 + 0.6*curve), actx.currentTime, 0.08);
     }
   }
-  // センサー
-  async function requestMotionPermission(){
-    try{
-      if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission){
-        await DeviceMotionEvent.requestPermission();
-      }
-      if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission){
-        await DeviceOrientationEvent.requestPermission();
-      }
-    }catch(_){}
-  }
-  document.addEventListener('pointerdown', requestMotionPermission, {once:true});
-  if (window.DeviceOrientationEvent){
-    window.addEventListener('deviceorientation', (e)=>{
-      if(e.beta==null||e.gamma==null) return;
-      setPitchFromBetaGamma(e.beta, e.gamma);
-    }, {passive:true});
-  }
-  // マウス/タッチドラッグで代用
-  let dragging=false;
-  cv.addEventListener('pointerdown', (e)=>{ dragging=true; handleDrag(e); });
-  window.addEventListener('pointerup', ()=> dragging=false);
-  cv.addEventListener('pointermove', (e)=>{ if(dragging) handleDrag(e); });
-  function handleDrag(e){
-    const r=cv.getBoundingClientRect();
-    const y=(e.clientY-r.top)/r.height; // 0..1
-    const beta = (y-0.5)*360; const gamma=0;
-    setPitchFromBetaGamma(beta, gamma);
-  }
 
-  // live: after audio exists, set initial params
-  function initThereminParams(){
-    updateDetune(); updateTrem();
-  }
-
-  // ===== draw（ピッチ連動拡大縮小：より分かりやすく）
-  let t=0; let visScale=1;
+  // ===== draw (bigger & smoother scaling) =====
+  var t=0, visScale=1;
   function draw(){
-    const w=cv.width,h=cv.height;
+    var w=cv.width,h=cv.height;
     ctx.fillStyle="#1a1a1a"; ctx.fillRect(0,0,w,h);
-    const lineBase=parseFloat(thickUI.value);
-    const glow=parseFloat(glowUI.value);
-    // ピッチ→0..1正規化
-    const pmin=parseFloat(pminUI.value), pmax=parseFloat(pmaxUI.value);
-    const pnorm=Math.min(1, Math.max(0, (pitchHz - pmin) / Math.max(1,(pmax-pmin)) ));
-    // もっと大きく動く：0.5〜1.6倍に
-    const targetScale = 0.5 + 1.1 * pnorm;
-    // なめらか補間
+    var lineBase=parseFloat(thickUI.value);
+    var glow=parseFloat(glowUI.value);
+    var pmin=parseFloat(pminUI.value), pmax=parseFloat(pmaxUI.value);
+    var pnorm=Math.min(1, Math.max(0, (window.pitchHz - pmin) / Math.max(1,(pmax-pmin)) ));
+    var targetScale = 0.5 + 1.1 * pnorm;
     visScale += (targetScale - visScale) * 0.15;
 
-    for(const s of shapes){
+    for(var i=0;i<shapes.length;i++){
+      var s=shapes[i];
       s.x+=s.vx; s.y+=s.vy; s.rot+=0.008;
       if(s.x<s.r){ s.x=s.r; s.vx=Math.abs(s.vx); } if(s.x>w-s.r){ s.x=w-s.r; s.vx=-Math.abs(s.vx); }
       if(s.y<s.r){ s.y=s.r; s.vy=Math.abs(s.vy); } if(s.y>h-s.r){ s.y=h-s.r; s.vy=-Math.abs(s.vy); }
       s.vx*=0.992; s.vy*=0.992;
-      const basePulse = 1 + 0.07*Math.sin(t*0.03 + s.x*0.003) + s.pulse*0.25;
-      const r = s.r * basePulse * visScale; s.pulse *= 0.92;
+      var basePulse = 1 + 0.07*Math.sin(t*0.03 + s.x*0.003) + s.pulse*0.25;
+      var r2 = s.r * basePulse * visScale; s.pulse *= 0.92;
       ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.rot);
       ctx.lineJoin="round"; ctx.lineCap="round";
-      ctx.shadowColor=s.color; ctx.shadowBlur=glow*2; ctx.strokeStyle=s.color; ctx.lineWidth=lineBase*2.4; drawShapeStroke(s.type,r);
-      ctx.shadowBlur=glow; ctx.lineWidth=lineBase*1.5; drawShapeStroke(s.type,r);
-      ctx.shadowBlur=glow*0.3; ctx.strokeStyle="#ffffff"; ctx.lineWidth=Math.max(1,lineBase*0.6); drawShapeStroke(s.type,r);
+      ctx.shadowColor=s.color; ctx.shadowBlur=glow*2; ctx.strokeStyle=s.color; ctx.lineWidth=lineBase*2.4; drawShapeStroke(s.type,r2);
+      ctx.shadowBlur=glow; ctx.lineWidth=lineBase*1.5; drawShapeStroke(s.type,r2);
+      ctx.shadowBlur=glow*0.3; ctx.strokeStyle="#ffffff"; ctx.lineWidth=Math.max(1,lineBase*0.6); drawShapeStroke(s.type,r2);
       ctx.restore();
     }
     t++; requestAnimationFrame(draw);
   }
   function drawShapeStroke(type,r){
-    switch(type){
-      case "circle": ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke(); break;
-      case "triangle": ctx.beginPath(); const h=r*1.1; ctx.moveTo(0,-h); ctx.lineTo(h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.lineTo(-h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.closePath(); ctx.stroke(); break;
-      case "square": ctx.strokeRect(-r,-r,r*2,r*2); break;
-      case "star": { const p=getStar(r); ctx.stroke(p); break; }
-      case "heart": { const p=getHeart(r); ctx.stroke(p); break; }
-    }
+    if(type==="circle"){ ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke(); return; }
+    if(type==="triangle"){ ctx.beginPath(); var h=r*1.1; ctx.moveTo(0,-h); ctx.lineTo(h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.lineTo(-h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.closePath(); ctx.stroke(); return; }
+    if(type==="square"){ ctx.strokeRect(-r,-r,r*2,r*2); return; }
+    if(type==="star"){ var p=getStar(r); ctx.stroke(p); return; }
+    if(type==="heart"){ var p2=getHeart(r); ctx.stroke(p2); return; }
   }
   requestAnimationFrame(draw);
 
-  // helpers
-  const starCache=new Map(), heartCache=new Map();
-  function starPath(r, spikes=5){ const p=new Path2D(); const step=Math.PI/spikes; p.moveTo(r,0); for(let i=0;i<spikes*2;i++){ const rr=(i%2===0)?r:r*0.45; const a=i*step; p.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);} p.closePath(); return p; }
-  function heartPath(r){ const p=new Path2D(); p.moveTo(0,-r*0.2); p.bezierCurveTo(r*0.9,-r*0.9, r*1.4,r*0.5, 0,r*1.2); p.bezierCurveTo(-r*1.4,r*0.5, -r*0.9,-r*0.9, 0,-r*0.2); return p; }
-  function getStar(r){ const k=r|0; if(!starCache.has(k)) starCache.set(k, starPath(k)); return starCache.get(k); }
-  function getHeart(r){ const k=r|0; if(!heartCache.has(k)) heartCache.set(k, heartPath(k)); return heartCache.get(k); }
-
-  // Boot after first interaction
-  ['pointerdown','touchstart','keydown'].forEach(ev=>addEventListener(ev, ()=>{ ensureAudio(); initThereminParams(); }, {once:true, passive:true}));
+  // sensors optional
+  function requestMotionPermission(){
+    try{
+      if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) DeviceMotionEvent.requestPermission();
+      if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) DeviceOrientationEvent.requestPermission();
+    }catch(_){}
+  }
+  document.addEventListener('pointerdown', requestMotionPermission, {once:true});
+  if (window.DeviceOrientationEvent){
+    window.addEventListener('deviceorientation', function(e){
+      if(e.beta==null||e.gamma==null) return;
+      setPitchFromBetaGamma(e.beta, e.gamma);
+    }, {passive:true});
+  }
 
 })();</script>
 <script>
-// SW
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.5.0"); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.5.2"); }
 </script>
 </body>
 </html>
