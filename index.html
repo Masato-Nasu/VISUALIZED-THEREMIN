@@ -3,31 +3,52 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
-<title>Baby Theremin Shapes — v1.7.1</title>
-<link rel="manifest" href="./manifest.json?v=1.7.1">
-<meta name="theme-color" content="#1a1a1a">
+<title>Baby Theremin Shapes — v1.7.2</title>
+<link rel="manifest" href="./manifest.json?v=1.7.2">
+<meta name="theme-color" content="#ffffff">
 <style>
-  :root{ --bg:#1a1a1a; --panel:#20232bcc; --text:#E8EAF2; --muted:#8b90a1; }
+  :root{ --bg:#fafbfe; --panel:#ffffffcc; --text:#10121a; --muted:#6b7280; --stroke1:#1f2937; --stroke2:#ffffff; --glow:#8ab4f8; }
+  :root.dark{ --bg:#0f1117; --panel:#20232bcc; --text:#E8EAF2; --muted:#8b90a1; --stroke1:#ffffff; --stroke2:#0f1117; --glow:#8ab4f8; }
   html,body{ height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Roboto,"Noto Sans JP",sans-serif; overscroll-behavior:none; }
-  #cv{ position:fixed; inset:0; width:100vw; height:100svh; display:block; touch-action:none; background:var(--bg); }
+  #cv{ position:fixed; inset:0; width:100vw; height:100svh; display:block; touch-action:none; background:var(--bg);
+      background-image: radial-gradient(ellipse at 20% 10%, #ffffff, transparent 60%), radial-gradient(ellipse at 80% 90%, #f0f4ff, transparent 60%); }
   .controls{ position:fixed; left:0; right:0; bottom:0; padding:12px; display:flex; flex-wrap:wrap; gap:10px; justify-content:center; align-items:center;
-    background:var(--panel); backdrop-filter:saturate(1.05) blur(6px); border-top-left-radius:16px; border-top-right-radius:16px;
+    background:var(--panel); backdrop-filter:saturate(1.05) blur(8px); border-top-left-radius:16px; border-top-right-radius:16px;
     transition:opacity .2s ease, visibility .2s ease, transform .2s ease; transform:translateY(8px) }
   .controls *{ touch-action:manipulation }
   .controls.hidden{ opacity:0; visibility:hidden; pointer-events:none; transform:translateY(12px) }
   .btn{appearance:none;border:0;border-radius:14px;background:#2f6feb;color:#fff; padding:12px 16px;font-size:16px;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
   .btn:active{transform:translateY(1px)}
-  .range,.select{display:inline-flex;align-items:center;gap:10px;background:#0f1117; color:#E8EAF2; border-radius:14px;padding:10px 12px; box-shadow:0 2px 8px rgba(0,0,0,.25)}
+  .iconbtn{appearance:none;border:0;border-radius:12px;background:#0f1117; color:#fff; padding:10px 12px; font-size:14px; opacity:.9}
+  .range,.select{display:inline-flex;align-items:center;gap:10px;background:#0f1117; color:#E8EAF2; border-radius:14px;padding:10px 12px; box-shadow:0 2px 8px rgba(0,0,0,.2)}
   input[type="range"]{width:160px}
   select{background:transparent;color:#E8EAF2;border:1px solid #222;padding:8px 10px;border-radius:10px}
-  .hint{position:fixed;top:10px;left:50%;transform:translateX(-50%);background:#00000066;border:1px solid #ffffff1a;color:#fff;
-        padding:8px 12px;border-radius:10px;font-size:14px}
+  .starter{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; gap:14px; background:linear-gradient(180deg,#ffffffcc,#ffffff88);}
+  .starter .card{background:#fff;border:1px solid #e5e7eb;border-radius:16px; padding:22px 18px; box-shadow:0 10px 30px rgba(0,0,0,.08); text-align:center; color:#111}
+  .starter .big{font-size:18px; margin-bottom:10px}
+  .starter .startbtn{appearance:none;border:0;background:#10b981;color:#fff;border-radius:12px;padding:12px 18px;font-size:16px;cursor:pointer}
   .closer{position:absolute;right:8px;top:-36px;background:#00000080;border:1px solid #ffffff22;color:#fff;padding:6px 10px;border-radius:10px}
+  .theme{ position:fixed; right:10px; top:10px; z-index:5 }
 </style>
 </head>
 <body>
 <canvas id="cv"></canvas>
-<div class="hint" id="hint">👶 軽タップ＝ポン（はじける）／長押し＝テルミン（v1.7.1）</div>
+
+<!-- 明るさ/暗さ 切替 -->
+<button id="theme" class="iconbtn theme">☀ 明るさ</button>
+
+<!-- スタート画面（音の開始が必要な環境向け） -->
+<div id="starter" class="starter">
+  <div class="card">
+    <div class="big">👶 Baby Theremin Shapes</div>
+    <div>「はじめる」を押すと音が鳴ります。</div>
+    <div style="margin-top:12px;">
+      <button id="startbtn" class="startbtn">はじめる ▶</button>
+    </div>
+    <div style="margin-top:10px;font-size:12px;color:#6b7280;">短タップ：はじける ／ 長押し：テルミン</div>
+  </div>
+</div>
+
 <div class="controls hidden" id="controls">
   <button id="closePanel" class="closer">× とじる</button>
   <label class="btn">🎵 おんがくフォルダ<input id="audDir" type="file" webkitdirectory directory multiple accept="audio/*" hidden></label>
@@ -42,12 +63,12 @@
   <button id="prev" class="btn">← まえ</button>
   <button id="play" class="btn">▶ / ❚❚</button>
   <button id="next" class="btn">つぎ →</button>
-  <div class="range">BGM音量 <input id="bgm" type="range" min="0" max="1" step="0.01" value="0.6"></div>
-  <div class="range">テルミン音量 <input id="tvol" type="range" min="0" max="1" step="0.01" value="0.22"></div>
-  <div class="range">かず <input id="count" type="range" min="3" max="50" step="1" value="22"></div>
-  <div class="range">せんの太さ <input id="thick" type="range" min="2" max="14" step="1" value="6"></div>
-  <div class="range">ひかり <input id="glow" type="range" min="8" max="60" step="1" value="28"></div>
-  <div class="range">ビート反応<input id="beatAmt" type="range" min="0" max="0.4" step="0.01" value="0.18"></div>
+  <div class="range">BGM音量 <input id="bgm" type="range" min="0" max="1" step="0.01" value="0.7"></div>
+  <div class="range">テルミン音量 <input id="tvol" type="range" min="0" max="1" step="0.01" value="0.25"></div>
+  <div class="range">かず <input id="count" type="range" min="5" max="60" step="1" value="26"></div>
+  <div class="range">せんの太さ <input id="thick" type="range" min="2" max="16" step="1" value="7"></div>
+  <div class="range">ひかり <input id="glow" type="range" min="10" max="70" step="1" value="32"></div>
+  <div class="range">ビート反応<input id="beatAmt" type="range" min="0" max="0.5" step="0.01" value="0.22"></div>
 </div>
 
 <script>
@@ -60,9 +81,15 @@
   var beatAmt=document.getElementById('beatAmt');
   var bgmUI=document.getElementById('bgm');
   var presetSel=document.getElementById('preset');
-  var hint=document.getElementById('hint');
+  var starter=document.getElementById('starter');
+  var startbtn=document.getElementById('startbtn');
+  var themeBtn=document.getElementById('theme');
 
-  window.pitchHz=440; // 120-900Hz の内部固定レンジ
+  // テーマ切替
+  themeBtn.addEventListener('click', function(){
+    document.documentElement.classList.toggle('dark');
+    themeBtn.textContent = document.documentElement.classList.contains('dark') ? '🌙 暗くする' : '☀ 明るさ';
+  });
 
   // ===== canvas sizing =====
   var dprCap=1.5;
@@ -84,7 +111,7 @@
   var activePointers=new Map(); var holdTimer=null;
   function togglePanel(){ controls.classList.toggle('hidden'); }
   function clearPointers(){ activePointers.clear(); if(holdTimer){clearTimeout(holdTimer); holdTimer=null;} }
-  function onPointerDownForMenu(e){ activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(activePointers.size>=2&&!holdTimer){ holdTimer=setTimeout(togglePanel,1200);} }
+  function onPointerDownForMenu(e){ activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(activePointers.size>=2&&!holdTimer){ holdTimer=setTimeout(togglePanel,1000);} }
   function onPointerMoveForMenu(e){ var p=activePointers.get(e.pointerId); if(!p) return; if(Math.abs(e.clientX-p.x)>20||Math.abs(e.clientY-p.y)>20) clearPointers(); }
   function onPointerUpForMenu(){ clearPointers(); }
   cv.addEventListener('pointerdown',onPointerDownForMenu,{passive:false});
@@ -93,12 +120,6 @@
   cv.addEventListener('pointercancel',onPointerUpForMenu,{passive:false});
   var taps=0,tapTimer=null; cv.addEventListener('pointerdown',function(){ taps++; if(taps===1){ tapTimer=setTimeout(function(){taps=0},1200);} if(taps>=3){ clearTimeout(tapTimer); taps=0; togglePanel(); }});
   closePanel.addEventListener('click', function(){ controls.classList.add('hidden'); });
-
-  // ===== first touch => fullscreen & audio =====
-  cv.addEventListener('pointerdown', function(){
-    ensureAudio(); try{ if(!document.fullscreenElement) document.documentElement.requestFullscreen(); }catch(_){}
-    if(hint && hint.parentNode) hint.parentNode.removeChild(hint);
-  }, {once:true});
 
   // ===== audio =====
   var audList=[], audIdx=0, audio=new Audio(); audio.preload="auto";
@@ -113,7 +134,7 @@
     bgmBus=actx.createGain(); bgmBus.gain.value=parseFloat(bgmUI.value);
     analyser=actx.createAnalyser(); analyser.fftSize=256;
 
-    // Theremin（固定値：シンプル化）
+    // Theremin（固定・最小）
     thFilter=actx.createBiquadFilter(); thFilter.type='lowpass'; thFilter.frequency.value=1800;
     envGain=actx.createGain(); envGain.gain.value=0.0;
     thAmp=actx.createGain(); thAmp.gain.value=parseFloat(tvolUI.value);
@@ -137,11 +158,19 @@
     updateBgmVol();
   }
 
+  function startAudioFlow(){
+    ensureAudio();
+    try{ if(actx && actx.state!=='running') actx.resume(); }catch(_){}
+    if(starter && starter.parentNode){ starter.parentNode.removeChild(starter); }
+  }
+
+  startbtn.addEventListener('click', startAudioFlow);
+
   function updateBgmVol(){ if(bgmBus&&actx) bgmBus.gain.setTargetAtTime(parseFloat(bgmUI.value),actx.currentTime,0.05); }
   bgmUI.addEventListener('input', function(){ ensureAudio(); updateBgmVol(); });
   tvolUI.addEventListener('input', function(){ ensureAudio(); thAmp && thAmp.gain.setTargetAtTime(parseFloat(tvolUI.value), actx.currentTime, 0.05); });
 
-  // ===== Preset sequencer =====
+  // プリセット
   var presetPlaying=false, seqTimer=null, seqPos=0, seqData=null, seqTempo=100;
   function stopPreset(){ presetPlaying=false; if(seqTimer){ clearTimeout(seqTimer); seqTimer=null; } seqPos=0; }
   function startPreset(kind){
@@ -193,13 +222,14 @@
     stopPreset();
     if(presetSel.value==='none'){ return; }
     try{ audio.pause(); }catch(_){}
+    startAudioFlow();
     startPreset(presetSel.value);
   });
 
-  // ===== Folder BGM =====
+  // フォルダBGM
   function naturalSort(a,b){ return a.name.localeCompare(b.name,'ja',{numeric:true}); }
   document.getElementById('audDir').addEventListener('change', function(e){
-    ensureAudio();
+    startAudioFlow();
     audList = Array.prototype.slice.call(e.target.files).filter(function(f){return f.type.indexOf('audio/')===0;}).sort(naturalSort);
     audIdx=0; if(audList.length){ presetSel.value='none'; stopPreset(); playIndex(audIdx); }
   });
@@ -213,7 +243,7 @@
     if(!audList.length)return; audIdx=(audIdx-1+audList.length)%audList.length; playIndex(audIdx);
   });
   document.getElementById('play').addEventListener('click',function(){
-    ensureAudio();
+    startAudioFlow();
     if(presetSel.value!=='none'){
       if(presetPlaying){ stopPreset(); } else { startPreset(presetSel.value); }
       return;
@@ -223,13 +253,13 @@
   });
   audio.addEventListener('ended', function(){ if(audList.length){ audIdx=(audIdx+1)%audList.length; playIndex(audIdx); } else { audio.currentTime=0; audio.play(); } });
 
-  // ===== short tap vs long press =====
+  // ===== interaction =====
   var pressStart=0, dragging=false;
   var lastPos={x:null,y:null};
   var chime=new Audio("./Chime.mp3"); chime.volume=0.3;
 
   cv.addEventListener('pointerdown', function(e){
-    ensureAudio();
+    startAudioFlow();
     pressStart=Date.now();
     dragging=true;
     updateLastPos(e);
@@ -290,6 +320,7 @@
   function gateOn(){ if(!actx||!envGain) return; var t=actx.currentTime; envGain.gain.cancelScheduledValues(t); envGain.gain.setTargetAtTime(1.0,t,0.06); }
   function gateOff(){ if(!actx||!envGain) return; var t=actx.currentTime; envGain.gain.cancelScheduledValues(t); envGain.gain.setTargetAtTime(0.0,t,0.12); }
 
+  // Pitch mapping（固定120〜900Hz）
   function setPitchFromBeta(beta){
     var pmin=120, pmax=900;
     var n=Math.min(1,Math.max(0,(beta+180)/360));
@@ -300,19 +331,20 @@
       oscA.frequency.setTargetAtTime(window.pitchHz,t,0.02);
       oscB.frequency.setTargetAtTime(window.pitchHz,t,0.02);
     }
+    if(actx&&thFilter){
+      thFilter.frequency.setTargetAtTime(1400 + curve*1200, actx.currentTime, 0.06);
+    }
   }
 
-  function ask(){ try{ if (window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission) DeviceOrientationEvent.requestPermission(); }catch(_){ } }
-  document.addEventListener('pointerdown', ask, {once:true});
-  window.addEventListener('deviceorientation', function(e){ if(e.beta==null) return; if(dragging && Date.now()-pressStart>180) return; setPitchFromBeta(e.beta); }, {passive:true});
-
+  // draw loop（明るい配色と強めの輪郭）
   var t=0, visScale=1, beatBoost=0;
   var lineBase, glow;
-  var COLORS=["#A5F3FC","#FBCFE8","#FDE68A","#C7D2FE","#86EFAC"], TYPES=["circle","triangle","square","star","heart"], shapes=[];
+  var COLORS=["#2563eb","#ef4444","#f59e0b","#10b981","#8b5cf6"], TYPES=["circle","triangle","square","star","heart"], shapes=[];
   function starPath(r,s){ var p=new Path2D(), st=Math.PI/s; p.moveTo(r,0); for(var i=0;i<s*2;i++){ var rr=(i%2===0)?r:r*0.45; var a=i*st; p.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);} p.closePath(); return p; }
   function heartPath(r){ var p=new Path2D(); p.moveTo(0,-r*0.2); p.bezierCurveTo(r*0.9,-r*0.9, r*1.4,r*0.5, 0,r*1.2); p.bezierCurveTo(-r*1.4,r*0.5, -r*0.9,-r*0.9, 0,-r*0.2); return p; }
   var starCache=new Map(), heartCache=new Map(); function getStar(r){ var k=r|0; if(!starCache.has(k)) starCache.set(k,starPath(k,5)); return starCache.get(k);} function getHeart(r){ var k=r|0; if(!heartCache.has(k)) heartCache.set(k,heartPath(k)); return heartCache.get(k); }
-  function reset(){ shapes.length=0; var n=Math.max(3,(countUI.value|0)); for(var i=0;i<n;i++){ var type=TYPES[i%TYPES.length], r=70*(0.6+Math.random()*0.6), x=Math.random()*cv.width, y=Math.random()*cv.height, rot=Math.random()*Math.PI*2, vx=(Math.random()-0.5)*0.5, vy=(Math.random()-0.5)*0.5, color=COLORS[i%COLORS.length]; shapes.push({type:type,x:x,y:y,r:r,rot:rot,vx:vx,vy:vy,pulse:0,color:color,flash:0}); } } 
+  function reset(){ shapes.length=0; var n=Math.max(5,(countUI.value|0)); for(var i=0;i<n;i++){ var type=TYPES[i%TYPES.length], r=70*(0.6+Math.random()*0.6), x=Math.random()*cv.width, y=Math.random()*cv.height, rot=Math.random()*Math.PI*2, vx=(Math.random()-0.5)*0.5, vy=(Math.random()-0.5)*0.5, color=COLORS[i%COLORS.length]; shapes.push({type:type,x:x,y:y,r:r,rot:rot,vx:vx,vy:vy,pulse:0,color:color,flash:0}); } }
+  reset();
   document.getElementById('count').addEventListener('input', reset);
 
   function doBurst(e){
@@ -331,7 +363,8 @@
 
   function draw(){
     var w=cv.width,h=cv.height;
-    ctx.fillStyle="#1a1a1a"; ctx.fillRect(0,0,w,h);
+    ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#ffffff';
+    ctx.fillRect(0,0,w,h);
     lineBase=parseFloat(thickUI.value);
     glow=parseFloat(glowUI.value);
     var pmin=120, pmax=900;
@@ -358,10 +391,8 @@
       var rr=s.r*base*visScale; s.pulse*=0.92;
       ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.rot);
       ctx.lineJoin="round"; ctx.lineCap="round";
-      var flashAlpha = s.flash; if(flashAlpha>0){ ctx.fillStyle='rgba(255,255,255,'+(0.25*flashAlpha)+')'; if(s.type==='square'){ ctx.fillRect(-rr,-rr,rr*2,rr*2);} else { ctx.beginPath(); if(s.type==='circle'){ ctx.arc(0,0,rr,0,Math.PI*2);} else if(s.type==='triangle'){ var h2=rr*1.1; ctx.moveTo(0,-h2); ctx.lineTo(h2*Math.sin(Math.PI/3),h2*Math.cos(Math.PI/3)); ctx.lineTo(-h2*Math.sin(Math.PI/3),h2*Math.cos(Math.PI/3)); ctx.closePath(); } else if(s.type==='star'){ ctx.stroke(getStar(rr)); } else if(s.type==='heart'){ ctx.stroke(getHeart(rr)); } ctx.fill(); } s.flash*=0.85; }
-      ctx.shadowColor=s.color; ctx.shadowBlur=glow*2; ctx.strokeStyle=s.color; ctx.lineWidth=lineBase*2.4; drawShape(s.type,rr);
-      ctx.shadowBlur=glow; ctx.lineWidth=lineBase*1.5; drawShape(s.type,rr);
-      ctx.shadowBlur=glow*0.3; ctx.strokeStyle="#ffffff"; ctx.lineWidth=Math.max(1,lineBase*0.6); drawShape(s.type,rr);
+      ctx.shadowColor=s.color; ctx.shadowBlur=glow*2; ctx.strokeStyle=s.color; ctx.lineWidth=lineBase*2.6; drawShape(s.type,rr);
+      ctx.shadowBlur=glow*0.2; ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--stroke1').trim() || '#1f2937'; ctx.lineWidth=Math.max(1,lineBase*0.9); drawShape(s.type,rr);
       ctx.restore();
     }
     t++; requestAnimationFrame(draw);
@@ -371,7 +402,7 @@
 
 })();</script>
 <script>
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.7.1"); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.7.2"); }
 </script>
 </body>
 </html>

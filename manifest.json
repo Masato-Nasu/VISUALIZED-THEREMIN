@@ -1,10 +1,10 @@
 {
   "name": "Baby Theremin Shapes",
   "short_name": "BabyTheremin",
-  "start_url": "./index.html?v=1.7.1",
+  "start_url": "./index.html?v=1.7.2",
   "display": "standalone",
-  "background_color": "#1a1a1a",
-  "theme_color": "#1a1a1a",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "icons": [
     {
       "src": "icon-192.png",
