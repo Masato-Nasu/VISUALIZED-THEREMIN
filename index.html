@@ -3,119 +3,153 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>Motion Theremin (Stable)</title>
-<meta name="theme-color" content="#111317">
-<link rel="manifest" href="./manifest.json?v=20251018052749">
+<title>Theremin PRO</title>
+<meta name="theme-color" content="#0f1115">
+<link rel="manifest" href="./manifest.json?v=20251018053401">
 <style>
-  :root { --fg:#eaeaea; --muted:#9aa0a6; --accent:#60a5fa; --bg:#111317; }
-  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Helvetica Neue","Noto Sans JP",sans-serif}
-  #stage{position:fixed;inset:0;display:block;width:100vw;height:100vh;touch-action:none;cursor:crosshair}
+  :root { --bg:#0f1115; --fg:#e6eaee; --muted:#9aa0a6; --accent:#60a5fa; }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif}
+  #stage{position:fixed;inset:0;display:block;width:100vw;height:100vh;touch-action:none;cursor:crosshair;background:radial-gradient(1200px 1200px at 50% 50%,#1a2030 0%,#0f1115 60%)}
   #topbar{position:fixed;top:10px;left:10px;right:10px;display:flex;gap:8px;align-items:center;z-index:10}
-  .btn{border:1px solid #ffffff22; background:#ffffff0f; color:var(--fg); padding:8px 10px; border-radius:10px; cursor:pointer; font-weight:600}
+  .btn{border:1px solid #ffffff22;background:#ffffff10;color:var(--fg);padding:8px 10px;border-radius:10px;cursor:pointer;font-weight:600}
   #status{margin-left:auto;font-size:12px;color:var(--muted)}
-  .panel{position:fixed;left:10px;right:10px;bottom:10px;display:grid;gap:6px;background:#00000040;border:1px solid #ffffff14;border-radius:12px;padding:10px;backdrop-filter:blur(6px)}
+  .panel{position:fixed;left:10px;right:10px;bottom:10px;display:grid;gap:8px;background:#00000040;border:1px solid #ffffff14;border-radius:12px;padding:10px;backdrop-filter:blur(6px)}
   label{font-size:12px;color:var(--muted)}
   input[type="range"]{width:100%}
+  details>summary{cursor:pointer;list-style:none}
+  details>summary::-webkit-details-marker{display:none}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .chip{font-size:12px;color:#9aa0a6}
 </style>
 </head>
 <body>
 <canvas id="stage"></canvas>
 <div id="topbar">
-  <button id="start" class="btn">タップして開始（音を解放）</button>
-  <button id="perm" class="btn">センサー許可</button>
-  <button id="bgmToggle" class="btn">BGM 再生/一時停止</button>
-  <button id="audioResume" class="btn">Audio再開</button>
+  <button id="start" class="btn">開始/音を解放</button>
   <button id="testBeep" class="btn">テストビープ</button>
-  <div id="status">SENS:— ｜ AUDIO:— ｜ FREQ:— Hz ｜ VOL:— ｜ v:20251018052749</div>
+  <button id="bgmToggle" class="btn">BGM 再生/一時停止</button>
+  <div id="status">SENS:— ｜ AUDIO:— ｜ FREQ:— Hz ｜ VOL:— ｜ v:20251018053401</div>
 </div>
 
 <div class="panel">
-  <div style="display:flex;gap:8px;flex-wrap:wrap">
-    <div style="min-width:150px"><label>Master 音量</label><input id="volMaster" type="range" min="0" max="1" step="0.001" value="0.8"></div>
-    <div style="min-width:150px"><label>Theremin 音量</label><input id="volTheremin" type="range" min="0" max="1" step="0.001" value="0.6"></div>
-    <div style="min-width:150px"><label>BGM 音量</label><input id="volBgm" type="range" min="0" max="1" step="0.001" value="0.5"></div>
-    <div style="min-width:150px"><label>チャイム 音量</label><input id="volChime" type="range" min="0" max="1" step="0.001" value="0.8"></div>
-  </div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
-    <input id="musicFile" type="file" accept="audio/*">
-    <label style="display:flex;align-items:center;gap:6px"><input id="bgmLoop" type="checkbox" checked> ループ</label>
-    <label style="display:flex;align-items:center;gap:6px"><input id="mouseMode" type="checkbox"> マウス操作</label>
-    <label style="display:flex;align-items:center;gap:6px"><input id="forceAccel" type="checkbox"> フォールバック固定</label>
-  </div>
-  <div style="font-size:12px;color:var(--muted)">ドラッグ：縦=ピッチ（上=低/下=高）、横=音量（左=小/右=大）。センサー無い環境では自動でマウス操作に切替。</div>
+  <details id="adv" open>
+    <summary class="row">
+      <span>設定</span>
+      <span class="chip" id="saveTip">（自動保存）</span>
+      <span class="chip" id="sensChip" style="margin-left:auto">SENS:—</span>
+    </summary>
+    <div class="row">
+      <div style="min-width:150px"><label>Master</label><input id="volMaster" type="range" min="0" max="1" step="0.001" value="0.8"></div>
+      <div style="min-width:150px"><label>Theremin</label><input id="volTheremin" type="range" min="0" max="1" step="0.001" value="0.6"></div>
+      <div style="min-width:150px"><label>BGM</label><input id="volBgm" type="range" min="0" max="1" step="0.001" value="0.5"></div>
+      <div style="min-width:150px"><label>Chime</label><input id="volChime" type="range" min="0" max="1" step="0.001" value="0.8"></div>
+    </div>
+    <div class="row">
+      <div style="min-width:150px"><label>Pitch最小Hz</label><input id="pitchMin" type="range" min="40" max="500" step="1" value="110"></div>
+      <div style="min-width:150px"><label>Pitch最大Hz</label><input id="pitchMax" type="range" min="600" max="3000" step="1" value="1200"></div>
+      <div style="min-width:150px"><label>Volカーブ</label><input id="volCurve" type="range" min="0.3" max="1.5" step="0.01" value="0.7"></div>
+    </div>
+    <div class="row">
+      <label><input id="mouseMode" type="checkbox"> マウス操作優先</label>
+      <label><input id="invertY" type="checkbox"> 縦操作を反転</label>
+      <label><input id="invertX" type="checkbox"> 横操作を反転</label>
+      <input id="musicFile" type="file" accept="audio/*">
+      <label><input id="bgmLoop" type="checkbox" checked> ループ</label>
+    </div>
+  </details>
 </div>
 
 <audio id="bgm" preload="none" crossorigin="anonymous"></audio>
 
 <script>
-// SW
-if("serviceWorker" in navigator){ addEventListener("load",()=>{ navigator.serviceWorker.register("./sw.js?ver=20251018052749").catch(()=>{}); }); }
+if ("serviceWorker" in navigator) addEventListener("load", ()=>navigator.serviceWorker.register("./sw.js?ver=20251018053401").catch(()=>{}));
 
-// Canvas
 const canvas=document.getElementById('stage'); const ctx=canvas.getContext('2d',{alpha:false});
 function resize(){ const dpr=Math.min(2,window.devicePixelRatio||1); canvas.width=Math.floor(innerWidth*dpr); canvas.height=Math.floor(innerHeight*dpr); canvas.style.width=innerWidth+'px'; canvas.style.height=innerHeight+'px'; ctx.setTransform(dpr,0,0,dpr,0,0); }
 addEventListener('resize',resize,{passive:true}); resize();
 
-// Audio graph
-let actx, master, gainTh, gainBgm, gainCh, osc, analyser;
-let freq=440;
 const statusEl=document.getElementById('status');
-function updateStatus(sens){ const st=actx?actx.state.toUpperCase():'—'; const v=(gainTh?gainTh.gain.value:0).toFixed(3); statusEl.textContent=`SENS:${sens||currSens} ｜ AUDIO:${st} ｜ FREQ:${freq.toFixed(1)} Hz ｜ VOL:${v} ｜ v:20251018052749`; }
-
-function setupAudio(){
-  if(actx) return;
-  actx=new (window.AudioContext||window.webkitAudioContext)();
-  master=actx.createGain(); master.gain.value=Number(volMaster.value); master.connect(actx.destination);
-  analyser=actx.createAnalyser(); analyser.fftSize=512; analyser.connect(master);
-  gainTh=actx.createGain(); gainTh.gain.value=Number(volTheremin.value);
-  gainBgm=actx.createGain(); gainBgm.gain.value=Number(volBgm.value);
-  gainCh =actx.createGain(); gainCh .gain.value=Number(volChime.value);
-  osc=actx.createOscillator(); osc.type='sine'; osc.frequency.value=freq; osc.connect(gainTh).connect(analyser);
-  gainBgm.connect(analyser); gainCh.connect(analyser);
-  osc.start();
-  updateStatus();
-}
-async function ensureAudio(){ if(!actx) setupAudio(); if(actx.state!=='running') try{ await actx.resume(); }catch(e){} updateStatus(); }
-
-// Sliders direct-wire
+const sensChip=document.getElementById('sensChip');
 const volMaster=document.getElementById('volMaster');
 const volTheremin=document.getElementById('volTheremin');
 const volBgm=document.getElementById('volBgm');
 const volChime=document.getElementById('volChime');
+const pitchMin=document.getElementById('pitchMin');
+const pitchMax=document.getElementById('pitchMax');
+const volCurve=document.getElementById('volCurve');
+const mouseMode=document.getElementById('mouseMode');
+const invertY=document.getElementById('invertY');
+const invertX=document.getElementById('invertX');
+const bgmEl=document.getElementById('bgm');
+const bgmLoop=document.getElementById('bgmLoop');
+
+const KEY="theremin.pro.settings";
+function save(){ localStorage.setItem(KEY, JSON.stringify({
+  volMaster:volMaster.value, volTheremin:volTheremin.value, volBgm:volBgm.value, volChime:volChime.value,
+  pitchMin:pitchMin.value, pitchMax:pitchMax.value, volCurve:volCurve.value,
+  mouseMode:mouseMode.checked, invertY:invertY.checked, invertX:invertX.checked, bgmLoop:bgmLoop.checked
+})); }
+function load(){ try{ const s=JSON.parse(localStorage.getItem(KEY)||"null"); if(!s) return;
+  volMaster.value=s.volMaster; volTheremin.value=s.volTheremin; volBgm.value=s.volBgm; volChime.value=s.volChime;
+  pitchMin.value=s.pitchMin; pitchMax.value=s.pitchMax; volCurve.value=s.volCurve;
+  mouseMode.checked=!!s.mouseMode; invertY.checked=!!s.invertY; invertX.checked=!!s.invertX; bgmLoop.checked=!!s.bgmLoop;
+} catch(e){} }
+[volMaster,volTheremin,volBgm,volChime,pitchMin,pitchMax,volCurve,mouseMode,invertY,invertX,bgmLoop].forEach(el=>el.addEventListener('input',save));
+load();
+
+let actx, master, gainTh, gainBgm, gainCh, osc, analyser, bgmSrc;
+let freq=440;
+function updateStatus(sens){ const st=actx?actx.state.toUpperCase():'—'; const v=(gainTh?gainTh.gain.value:0).toFixed(3); statusEl.textContent='SENS:'+(sens||currSens)+' ｜ AUDIO:'+st+' ｜ FREQ:'+freq.toFixed(1)+' Hz ｜ VOL:'+v+' ｜ v:20251018053401'; sensChip.textContent = 'SENS:'+(sens||currSens); }
+function setupAudio(){
+  if (actx) return;
+  actx=new (window.AudioContext||window.webkitAudioContext)();
+  master=actx.createGain(); master.gain.value=Number(volMaster.value); master.connect(actx.destination);
+  analyser=actx.createAnalyser(); analyser.fftSize=512; analyser.connect(master);
+  gainTh=actx.createGain(); gainTh.gain.value=Number(volTheremin.value); gainTh.connect(analyser);
+  gainBgm=actx.createGain(); gainBgm.gain.value=Number(volBgm.value);  gainBgm.connect(analyser);
+  gainCh =actx.createGain(); gainCh .gain.value=Number(volChime.value); gainCh .connect(analyser);
+  osc=actx.createOscillator(); osc.type='sine'; osc.frequency.value=freq; osc.connect(gainTh); osc.start();
+  updateStatus();
+}
+async function ensureAudio(){ if(!actx) setupAudio(); if(actx.state!=='running') try{ await actx.resume(); }catch(e){} updateStatus(); }
+
 volMaster.addEventListener('input',()=>{ if(master) master.gain.value=Number(volMaster.value); updateStatus(); });
 volTheremin.addEventListener('input',()=>{ if(gainTh) gainTh.gain.value=Number(volTheremin.value); updateStatus(); });
 volBgm.addEventListener('input',()=>{ if(gainBgm) gainBgm.gain.value=Number(volBgm.value); });
 volChime.addEventListener('input',()=>{ if(gainCh)  gainCh .gain.value=Number(volChime.value); });
 
-// BGM
-const bgmEl=document.getElementById('bgm'); let bgmSrc=null;
+document.getElementById('start').addEventListener('click', ensureAudio);
+document.getElementById('testBeep').addEventListener('click', async ()=>{
+  await ensureAudio();
+  const o=actx.createOscillator(), g=actx.createGain();
+  o.type='sine'; o.frequency.value=880; g.gain.value=0;
+  o.connect(g).connect(master);
+  const t=actx.currentTime; g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.6,t+0.01); g.gain.linearRampToValueAtTime(0.0,t+0.06); o.start(t); o.stop(t+0.08);
+});
+
 function connectBgm(){ if(!actx) return; if(bgmSrc) try{bgmSrc.disconnect();}catch(e){} bgmSrc=actx.createMediaElementSource(bgmEl); bgmSrc.connect(gainBgm); }
-document.getElementById('musicFile').addEventListener('change',e=>{ const f=e.target.files?.[0]; if(!f) return; const url=URL.createObjectURL(f); bgmEl.src=url; bgmEl.loop=document.getElementById('bgmLoop').checked; connectBgm(); bgmEl.play().catch(()=>{}); });
-document.getElementById('bgmLoop').addEventListener('change',e=>{ bgmEl.loop=e.target.checked; });
-document.getElementById('bgmToggle').addEventListener('click',()=>{ ensureAudio(); connectBgm(); if(bgmEl.paused) bgmEl.play().catch(()=>{}); else bgmEl.pause(); });
-
-// Buttons
-document.getElementById('start').addEventListener('click',ensureAudio);
-document.getElementById('audioResume').addEventListener('click',ensureAudio);
-['pointerdown','touchstart','keydown'].forEach(evt=>addEventListener(evt,ensureAudio,{passive:true}));
-document.getElementById('testBeep').addEventListener('click', async()=>{ await ensureAudio(); const o=actx.createOscillator(); const g=actx.createGain(); o.type='sine'; o.frequency.value=880; g.gain.value=0; o.connect(g).connect(master); const t=actx.currentTime; g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.6,t+0.01); g.gain.linearRampToValueAtTime(0.0,t+0.06); o.start(t); o.stop(t+0.08); });
-
-// Sensors + Mouse fallback
-let currSens='—', useAccelFallback=false, oriCnt=0, motCnt=0;
-const mouseMode=document.getElementById('mouseMode'); const forceAccel=document.getElementById('forceAccel');
+document.getElementById('musicFile').addEventListener('change', e=>{ const f=e.target.files?.[0]; if(!f) return; const url=URL.createObjectURL(f); bgmEl.src=url; bgmEl.loop=bgmLoop.checked; connectBgm(); bgmEl.play().catch(()=>{}); });
+bgmLoop.addEventListener('change', e=>{ bgmEl.loop=e.target.checked; });
+document.getElementById('bgmToggle').addEventListener('click', ()=>{ ensureAudio(); connectBgm(); if(bgmEl.paused) bgmEl.play().catch(()=>{}); else bgmEl.pause(); });
 
 function applyAngles(beta,gamma){
-  const betaNorm=Math.min(1,Math.max(0,(beta+180)/360)); const betaCurve=Math.sin(betaNorm*Math.PI);
-  freq=110 + betaCurve*(1200-110);
-  const gammaNorm=Math.min(1,Math.max(0,(Math.abs(gamma)/90))); const vshape=Math.pow(gammaNorm,0.7);
-  if(osc) osc.frequency.setTargetAtTime(freq, actx.currentTime, 0.02);
-  if(gainTh){ const base=Number(volTheremin.value); gainTh.gain.setTargetAtTime(base*(mouseMode.checked?1:vshape), actx.currentTime, 0.03); }
+  const min=Number(pitchMin.value), max=Number(pitchMax.value);
+  const betaAdj = invertY.checked ? -beta : beta;
+  const gammaAdj= invertX.checked ? -gamma: gamma;
+  const betaNorm=Math.min(1,Math.max(0,(betaAdj+180)/360)); const betaCurve=Math.sin(betaNorm*Math.PI);
+  freq = min + betaCurve * (max - min);
+  const gammaNorm=Math.min(1,Math.max(0,(Math.abs(gammaAdj)/90)));
+  const vshape=Math.pow(gammaNorm, Number(volCurve.value));
+  if(osc)    osc.frequency.setTargetAtTime(freq, actx.currentTime, 0.02);
+  if(gainTh) gainTh.gain.setTargetAtTime(Number(volTheremin.value) * (mouseMode.checked?1:vshape), actx.currentTime, 0.03);
   draw(); updateStatus();
 }
+
+let currSens='—', oriCnt=0, motCnt=0;
 function handleOrientation(ev){ if(ev.beta==null||ev.gamma==null) return; oriCnt++; currSens='OK'; applyAngles(ev.beta, ev.gamma); }
 function handleMotion(ev){
-  motCnt++; if(oriCnt===0 || useAccelFallback){ currSens='ACCEL';
-    const a=ev.accelerationIncludingGravity||{x:0,y:0,z:0}; const ax=a.x||0, ay=a.y||0, az=a.z||0;
+  motCnt++; if(oriCnt===0){ currSens='ACCEL';
+    const a=ev.accelerationIncludingGravity||{{x:0,y:0,z:0}}; const ax=a.x||0, ay=a.y||0, az=a.z||0;
     const pitch=Math.atan2(ax, Math.hypot(ay,az))*180/Math.PI; const roll=Math.atan2(ay, Math.hypot(ax,az))*180/Math.PI;
     applyAngles(pitch, roll);
   }
@@ -124,15 +158,17 @@ addEventListener('deviceorientation', handleOrientation, {passive:true});
 addEventListener('deviceorientationabsolute', handleOrientation, {passive:true});
 addEventListener('devicemotion', handleMotion, {passive:true});
 
-// Mouse control
 let dragging=false;
 function mapFromCanvas(px,py){
   const r=canvas.getBoundingClientRect();
   const x=(px-r.left)/r.width, y=(py-r.top)/r.height;
-  const gamma=(x-0.5)*180; const beta=(y-0.5)*360;
+  const xx = invertX.checked ? (1-x) : x;
+  const yy = invertY.checked ? (1-y) : y;
+  const gamma=(xx-0.5)*180; const beta=(yy-0.5)*360;
   const volNorm=Math.min(1,Math.max(0,(gamma+90)/180));
   const betaNorm=Math.min(1,Math.max(0,(beta+180)/360));
-  const f=110 + Math.sin(betaNorm*Math.PI)*(1200-110);
+  const min=Number(pitchMin.value), max=Number(pitchMax.value);
+  const f = min + Math.sin(betaNorm*Math.PI) * (max-min);
   return {f, v:volNorm};
 }
 function handlePointer(e){
@@ -149,30 +185,20 @@ canvas.addEventListener('touchstart',e=>{ dragging=true; ensureAudio(); handlePo
 canvas.addEventListener('touchmove',e=>{ if(dragging) handlePointer(e); },{passive:true});
 addEventListener('touchend',()=> dragging=false);
 
-// Auto-enable mouse if no sensors
 setTimeout(()=>{ if(oriCnt===0 && motCnt===0){ mouseMode.checked=true; currSens='MOUSE'; updateStatus(); }}, 1500);
-forceAccel.addEventListener('change', e=>{ useAccelFallback=e.target.checked; });
 
-// Visual
 function draw(){
-  const w=canvas.clientWidth,h=canvas.clientHeight,cx=w/2,cy=h/2;
   ctx.clearRect(0,0,canvas.width,canvas.height);
+  const w=canvas.clientWidth,h=canvas.clientHeight,cx=w/2,cy=h/2;
   const base=Number(volTheremin.value)||0.001; const rel=gainTh? (gainTh.gain.value/base) : 0;
-  const rad=Math.min(w,h)*(0.18+0.18*rel); const time=performance.now()*0.001; const pulse=0.6+0.4*Math.sin(time*2+freq*0.002);
-  ctx.fillStyle='rgba(96,165,250,0.12)'; ctx.strokeStyle='rgba(96,165,250,0.75)'; ctx.lineWidth=2;
+  const rad=Math.min(w,h)*(0.18+0.18*rel); const t=performance.now()*0.001; const pulse=0.6+0.4*Math.sin(t*2+freq*0.002);
+  ctx.fillStyle='rgba(96,165,250,0.12)'; ctx.strokeStyle='rgba(96,165,250,0.8)'; ctx.lineWidth=2;
   ctx.beginPath(); ctx.arc(cx,cy,rad*(0.8+0.4*pulse),0,Math.PI*2); ctx.fill(); ctx.stroke();
 }
 (function loop(){ requestAnimationFrame(loop); draw(); })();
 
-// Permission button
-document.getElementById('perm').addEventListener('click', async()=>{
-  try{
-    if(window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission==='function') await DeviceMotionEvent.requestPermission();
-    if(window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission==='function') await DeviceOrientationEvent.requestPermission();
-  }catch(e){}
-});
-
-// Boot
+document.getElementById('start').addEventListener('click', ensureAudio);
+['pointerdown','touchstart','keydown'].forEach(evt=>addEventListener(evt,ensureAudio,{passive:true}));
 setupAudio(); updateStatus();
 </script>
 </body>

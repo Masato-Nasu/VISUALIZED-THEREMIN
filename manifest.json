@@ -1,12 +1,12 @@
 {
-  "name": "Motion Theremin (Stable)",
-  "short_name": "Theremin",
+  "name": "Theremin PRO (Minimal UI)",
+  "short_name": "ThereminPRO",
   "start_url": "./index.html?v=__VER__",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#111317",
-  "theme_color": "#111317",
+  "background_color": "#0f1115",
+  "theme_color": "#0f1115",
   "icons": [
     {
       "src": "./icon-192.png?v=__VER__",
