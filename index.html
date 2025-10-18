@@ -1,14 +1,13 @@
-
 <!doctype html>
 <html lang="ja">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"/>
-<title>KB×AERIAL — prod v4</title>
+<title>KB×AERIAL — android v5</title>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#0b0c10">
 <style>
-  html,body{ margin:0; height:100%; background:#0b0c0f; }
+  html,body{ margin:0; height:100%; background:#0b0c10; touch-action:none; } /* Android PWA: disable gestures globally */
   #kbFrame{ position:fixed; inset:0; border:0; width:100%; height:100%; }
   #panel{ position:fixed; right:16px; bottom:16px; width:min(520px,96vw); height:min(70vh,560px);
            background:#000; border:1px solid #2a2a33; border-radius:14px; overflow:hidden;
@@ -19,70 +18,69 @@
 </style>
 </head>
 <body>
-  <iframe id="kbFrame" src="./kb/index.html?v=4" allow="fullscreen"></iframe>
+  <iframe id="kbFrame" src="./kb/index.html?v=5" allow="fullscreen"></iframe>
   <div id="panel">
     <div id="drag">操作パネル（✌ 二本指長押しで表示/非表示・ドラッグ移動）</div>
     <iframe id="aerialFrame" src="./aerial/hum-theremin-recorder-nosw.html?v=22.2" allow="autoplay; microphone; fullscreen"></iframe>
   </div>
-  <div id="hint">✌ 二本指長押しで操作パネル ／ 高い音ほど図形が大きく・低いと戻る</div>
+  <div id="hint">✌ 二本指長押しで操作パネル ／ ピッチ高→拡大・低→縮小（Android最適化）</div>
 
 <script>
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js"); }
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js'); }
 
 const panel=document.getElementById('panel'), hint=document.getElementById('hint');
 const kbFrame=document.getElementById('kbFrame'), aerialFrame=document.getElementById('aerialFrame');
 function setPanel(show){ panel.style.display=show?'block':'none'; if(hint) hint.style.opacity=show?0.6:0.9; }
 function togglePanel(){ setPanel(panel.style.display!=='block'); }
-setPanel(true); setTimeout(()=>setPanel(false), 1800);
+setPanel(true); setTimeout(()=>setPanel(false), 1500);
 
-// Two-finger long-press (pointer + touch)
+// Two-finger long-press (0.8s) — pointer + touch; global touch-action:none already applied
 (function(){
   const active=new Map(); let holdTimer=null;
-  const cancelHold=()=>{ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } };
-  const moved=(p,e)=> Math.abs(e.clientX-p.x)>20 || Math.abs(e.clientY-p.y)>20;
+  const cancel=()=>{ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } };
+  const moved=(p,e)=> Math.abs(e.clientX-p.x)>18 || Math.abs(e.clientY-p.y)>18; // 少し厳しめ
 
   document.addEventListener('pointerdown', e=>{ active.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(active.size>=2 && !holdTimer) holdTimer=setTimeout(()=>togglePanel(),800); if(active.size>=2) e.preventDefault(); }, {capture:true, passive:false});
-  document.addEventListener('pointermove', e=>{ const p=active.get(e.pointerId); if(p && moved(p,e)) cancelHold(); if(active.size>=2) e.preventDefault(); }, {capture:true, passive:false});
-  ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>{ document.addEventListener(ev, e=>{ active.delete(e.pointerId); cancelHold(); }, {capture:true, passive:false}); });
+  document.addEventListener('pointermove', e=>{ const p=active.get(e.pointerId); if(p && moved(p,e)) cancel(); if(active.size>=2) e.preventDefault(); }, {capture:true, passive:false});
+  ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>{ document.addEventListener(ev, e=>{ active.delete(e.pointerId); cancel(); }, {capture:true, passive:false}); });
 
   let tc=0, tPts=[], tTimer=null; const tCancel=()=>{ if(tTimer){ clearTimeout(tTimer); tTimer=null; } };
   document.addEventListener('touchstart', e=>{ tc=e.touches.length; tPts=Array.from(e.touches).map(t=>({x:t.clientX,y:t.clientY})); if(tc>=2 && !tTimer){ tTimer=setTimeout(()=>togglePanel(),800); e.preventDefault(); } }, {capture:true, passive:false});
-  document.addEventListener('touchmove', e=>{ if(tc>=2){ const mv=Array.from(e.touches).some((t,i)=>{ const p=tPts[i]||tPts[0]; return Math.abs(t.clientX-p.x)>20||Math.abs(t.clientY-p.y)>20; }); if(mv) tCancel(); e.preventDefault(); } }, {capture:true, passive:false});
+  document.addEventListener('touchmove', e=>{ if(tc>=2){ const mv=Array.from(e.touches).some((t,i)=>{ const p=tPts[i]||tPts[0]; return Math.abs(t.clientX-p.x)>18||Math.abs(t.clientY-p.y)>18; }); if(mv) tCancel(); e.preventDefault(); } }, {capture:true, passive:false});
   document.addEventListener('touchend', ()=>{ tCancel(); tc=0; }, {capture:true, passive:false});
   document.addEventListener('touchcancel', ()=>{ tCancel(); tc=0; }, {capture:true, passive:false});
 })();
 
-// Branding mask
-aerialFrame.addEventListener('load', ()=>{ try{ const d=aerialFrame.contentDocument; const st=d.createElement('style'); st.textContent='h1, header, [class*=title], [class*=header], [data-brand]{display:none!important;} body{font-family:system-ui,\'Noto Sans JP\',sans-serif;}'; d.head.appendChild(st); }catch(_ ){} });
-
-// Inject two-finger into iframes
+// Inject two-finger into iframes too
 function injectTwoFinger(frameEl, msgType){ if(!frameEl) return; frameEl.addEventListener('load', ()=>{ try{ const d=frameEl.contentDocument; const st=d.createElement('style'); st.textContent='html,body,*{touch-action:none!important;-ms-touch-action:none!important;}'; d.head.appendChild(st); const s=d.createElement('script'); s.type='text/javascript'; s.text=`
   (function(){
     const active=new Map(); let timer=null;
     const cancel=()=>{ if(timer){ clearTimeout(timer); timer=null; } };
-    const moved=(p,e)=> Math.abs(e.clientX-p.x)>20 || Math.abs(e.clientY-p.y)>20;
+    const moved=(p,e)=> Math.abs(e.clientX-p.x)>18 || Math.abs(e.clientY-p.y)>18;
     document.addEventListener('pointerdown', e=>{ active.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(active.size>=2 && !timer){ timer=setTimeout(()=>{ try{ parent.postMessage({type:"__MSG__"}, "*"); }catch{} },800); e.preventDefault(); e.stopImmediatePropagation(); return false; } }, {capture:true, passive:false});
     document.addEventListener('pointermove', e=>{ const p=active.get(e.pointerId); if(p && moved(p,e)) cancel(); if(active.size>=2){ e.preventDefault(); e.stopImmediatePropagation(); return false; } }, {capture:true, passive:false});
     ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>{ document.addEventListener(ev, e=>{ active.delete(e.pointerId); cancel(); }, {capture:true, passive:false}); });
     let tc=0, tPts=[], tTimer=null; const tCancel=()=>{ if(tTimer){ clearTimeout(tTimer); tTimer=null; } };
     document.addEventListener('touchstart', e=>{ tc=e.touches.length; tPts=Array.from(e.touches).map(t=>({x:t.clientX,y:t.clientY})); if(tc>=2 && !tTimer){ tTimer=setTimeout(()=>{ try{ parent.postMessage({type:"__MSG__"}, "*"); }catch{} },800); e.preventDefault(); e.stopImmediatePropagation(); return false; } }, {capture:true, passive:false});
-    document.addEventListener('touchmove', e=>{ if(tc>=2){ const mv=Array.from(e.touches).some((t,i)=>{ const p=tPts[i]||tPts[0]; return Math.abs(t.clientX-p.x)>20||Math.abs(t.clientY-p.y)>20; }); if(mv) tCancel(); e.preventDefault(); e.stopImmediatePropagation(); return false; } }, {capture:true, passive:false});
+    document.addEventListener('touchmove', e=>{ if(tc>=2){ const mv=Array.from(e.touches).some((t,i)=>{ const p=tPts[i]||tPts[0]; return Math.abs(t.clientX-p.x)>18||Math.abs(t.clientY-p.y)>18; }); if(mv) tCancel(); e.preventDefault(); e.stopImmediatePropagation(); return false; } }, {capture:true, passive:false});
     document.addEventListener('touchend', ()=>{ tCancel(); tc=0; }, {capture:true, passive:false});
     document.addEventListener('touchcancel', ()=>{ tCancel(); tc=0; }, {capture:true, passive:false});
   })();
 `; s.text = s.text.replace(/__MSG__/g, msgType); d.head.appendChild(s); }catch(_ ){} }); }
 injectTwoFinger(kbFrame, 'KB_TWO_FINGER');
 injectTwoFinger(aerialFrame, 'AERIAL_TWO_FINGER');
-
 window.addEventListener('message', (e)=>{ if(e?.data?.type==='KB_TWO_FINGER' || e?.data?.type==='AERIAL_TWO_FINGER') togglePanel(); });
 
-// Pitch bridge into AERIAL
+// AERIAL branding mask
+aerialFrame.addEventListener('load', ()=>{ try{ const d=aerialFrame.contentDocument; const st=d.createElement('style'); st.textContent='h1, header, [class*=title], [class*=header], [data-brand]{display:none!important;} body{font-family:system-ui,\'Noto Sans JP\',sans-serif;}'; d.head.appendChild(st); }catch(_ ){} });
+
+// Pitch bridge injection
 aerialFrame.addEventListener('load', ()=>{ try{ const d=aerialFrame.contentDocument; const s=d.createElement('script'); s.type='text/javascript'; s.text=`
   (function(){
     let analyser=null, hooked=false, ctx=null;
     function loop(a, ctx){ const N=2048, buf=new Float32Array(N), sr=ctx.sampleRate||48000;
       const step=()=>{ a.getFloatTimeDomainData(buf); let rms=0; for(let i=0;i<N;i++) rms+=buf[i]*buf[i]; rms=Math.sqrt(rms/N);
-        if(rms>0.004){ let mean=0; for(let i=0;i<N;i++) mean+=buf[i]; mean/=N; for(let i=0;i<N;i++) buf[i]-=mean;
+        if(rms>0.0035){ let mean=0; for(let i=0;i<N;i++) mean+=buf[i]; mean/=N; for(let i=0;i<N;i++) buf[i]-=mean;
           let best=-1, bc=0; for(let off=20; off<N/2; off++){ let c=0; for(let i=0;i<N-off;i++) c+=buf[i]*buf[i+off]; c/=(N-off); if(c>bc){ bc=c; best=off; } }
           if(best>0){ const hz=sr/best; try{ parent.postMessage({type:'AERIAL_PITCH_HZ', hz}, '*'); }catch{} }
         }
@@ -94,8 +92,8 @@ aerialFrame.addEventListener('load', ()=>{ try{ const d=aerialFrame.contentDocum
   })();
 `; d.head.appendChild(s); }catch(_ ){} });
 
-// Parent: pitch -> KB size (shrink follows)
-const FMIN=120, FMAX=1800, ATTACK=0.75, RELEASE=0.55, STEP_UP_MAX=0.15, STEP_DOWN_MAX=0.12;
+// Parent: map pitch -> KB (shrink follows). Also send explicit 'SCALE' for KB-centering injector.
+const FMIN=120, FMAX=1800, ATTACK=0.75, RELEASE=0.6, STEP_UP_MAX=0.18, STEP_DOWN_MAX=0.16;
 let env=0, prevTarget=0, med=[];
 function hz2norm(hz){ const c=Math.max(FMIN, Math.min(FMAX, hz||FMIN)); return (Math.log(c)-Math.log(FMIN))/(Math.log(FMAX)-Math.log(FMIN)); }
 function applyPitch(hz){ let n=hz2norm(hz); med.push(n); if(med.length>5) med.shift(); const mid=[...med].sort((a,b)=>a-b)[Math.floor(med.length/2)];
@@ -104,16 +102,50 @@ function applyPitch(hz){ let n=hz2norm(hz); med.push(n); if(med.length>5) med.sh
   const coeff=(target>=env)? ATTACK:RELEASE;
   env = env + (target-env)*coeff;
   prevTarget=target;
-  try{ kbFrame.contentWindow.postMessage({type:'PITCH_NORM', v: env}, '*'); }catch(_ ){}
+  const payload={type:'PITCH_NORM', v:env, scale: (1+0.30*env) };
+  try{ kbFrame.contentWindow.postMessage(payload, '*'); }catch(_ ){}
 }
 window.addEventListener('message', (e)=>{ if(e?.data?.type==='AERIAL_PITCH_HZ' && typeof e.data.hz==='number' && e.data.hz>0) applyPitch(e.data.hz); });
 
-// Drag panel
-(function(){ const drag=document.getElementById('drag'); let sx=0, sy=0, ox=0, oy=0, on=false;
-  drag.addEventListener('pointerdown', (e)=>{ on=true; drag.setPointerCapture(e.pointerId); const r=panel.getBoundingClientRect(); ox=r.left; oy=r.top; sx=e.clientX; sy=e.clientY; document.body.style.cursor='grabbing'; });
-  drag.addEventListener('pointermove', (e)=>{ if(!on) return; const dx=e.clientX-sx, dy=e.clientY-sy; panel.style.left=Math.max(8, Math.min(innerWidth-panel.offsetWidth-8, ox+dx))+'px'; panel.style.top=Math.max(8, Math.min(innerHeight-panel.offsetHeight-8, oy+dy))+'px'; panel.style.right='auto'; panel.style.bottom='auto'; });
-  const end=()=>{ on=false; document.body.style.cursor=''; }; drag.addEventListener('pointerup', end); drag.addEventListener('pointercancel', end);
-})();
+// KB: robust center-scaling injector (handles arbitrary DOM)
+kbFrame.addEventListener('load', ()=>{ try{ const d=kbFrame.contentDocument;
+  const s=d.createElement('script'); s.type='text/javascript'; s.text=`
+    (function(){
+      // 1) pick a visual target: prefer canvas/video/svg; else largest element
+      function pickTarget(){
+        const c=d.querySelector? d.querySelector('canvas,video,svg') : null;
+        if(c) return c;
+        let best=null, area=0;
+        const els = Array.from(d.body.querySelectorAll('*'));
+        for(const el of els){ const r=el.getBoundingClientRect(); const a=r.width*r.height; if(a>area){ area=a; best=el; } }
+        return best || d.body;
+      }
+      const d=document, target=pickTarget();
+      if(target && target.style){ target.style.transformOrigin='50% 50%'; target.style.willChange='transform'; }
+      // 2) center + scale around viewport center without affecting layout (fixed overlay trick)
+      let applied=false, holder=null;
+      function ensureFixedCenter(){
+        if(applied||!target) return;
+        holder=d.createElement('div'); holder.id='__kb_center_wrap__';
+        Object.assign(holder.style,{ position:'fixed', left:'50%', top:'50%', transform:'translate(-50%,-50%)', width:'100vw', height:'100vh', pointerEvents:'none', zIndex:2 });
+        // move target inside holder clone via CSS containment (without reparenting): use CSS transforms on holder only
+        // Instead of moving DOM, we apply scale on holder and let target be as-is: we create a mirror overlay
+        // Create a clone canvas overlay when target is canvas; otherwise just scale body (fallback)
+        let overlay=null;
+        if(target.tagName==='CANVAS'){ overlay=d.createElement('canvas'); overlay.width=innerWidth*devicePixelRatio; overlay.height=innerHeight*devicePixelRatio; overlay.style.width='100vw'; overlay.style.height='100vh'; holder.appendChild(overlay);
+          const ctx=overlay.getContext('2d'); function draw(){
+            try{ ctx.clearRect(0,0,overlay.width,overlay.height); ctx.drawImage(target,0,0,overlay.width,overlay.height); }catch{}
+            requestAnimationFrame(draw);
+          } requestAnimationFrame(draw);
+        }else{ holder.style.pointerEvents='none'; }
+        d.body.appendChild(holder); applied=true;
+      }
+      ensureFixedCenter();
+      window.addEventListener('message', (e)=>{ if(e?.data?.type==='PITCH_NORM'){ var sc = e.data.scale || (1+0.30*(e.data.v||0)); if(holder) holder.style.transform = 'translate(-50%,-50%) scale('+sc+')'; } });
+    })();
+  `.replace('d=kbFrame.contentDocument','d=document');
+  d.head.appendChild(s);
+}catch(_ ){} });
 </script>
 </body>
 </html>
