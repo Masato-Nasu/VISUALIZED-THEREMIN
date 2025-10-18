@@ -27,53 +27,105 @@
   <div id="hint">✌ 二本指タッチ／長押し（0.8秒）／Sキー でパネル表示</div>
 
   <script>
+
     if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js"); }
     const panel = document.getElementById('panel');
     const hint = document.getElementById('hint');
+    const kbFrame = document.getElementById('kbFrame');
+    const aerialFrame = document.getElementById('aerialFrame');
 
-    function qs(name){ const m=new URL(location.href); return m.searchParams.get(name); }
-    function hashPanel(){ return /panel=(1|0)/.test(location.hash)? location.hash.match(/panel=(1|0)/)[1] : null; }
-
-    function setPanel(show){
-      panel.style.display = show ? "block" : "none";
-      hint.style.opacity = show ? 0.6 : 0.9;
-    }
+    function setPanel(show){ panel.style.display = show ? "block" : "none"; hint.style.opacity = show ? 0.6 : 0.9; }
     function toggle(){ setPanel(panel.style.display!=="block"); }
 
-    // Initial show/hide policy
+    // Initial: show once then hide
     (function init(){
-      const q=qs("panel"); const h=hashPanel();
-      if(q==="1" || h==="1"){ setPanel(true); return; }
-      if(q==="0" || h==="0"){ setPanel(false); return; }
-      // First load: show, then auto-hide
       setPanel(true);
-      setTimeout(()=>setPanel(false), 6000);
+      setTimeout(()=>setPanel(false), 4000);
     })();
 
-    // Two-finger toggle with cooldown
+    // Two-finger on wrapper
     let lastTF=0;
-    document.addEventListener('touchstart', e => {
+    document.addEventListener('touchstart', e=>{
       const now=performance.now();
-      if(e.touches && e.touches.length>=2 && now-lastTF>500){
-        lastTF=now; toggle();
-      }
+      if(e.touches && e.touches.length>=2 && now-lastTF>500){ lastTF=now; toggle(); }
     }, {passive:true});
 
-    // Long-press (0.8s) one finger
+    // KB notifies parent for 2-finger as well
+    window.addEventListener("message", (e)=>{
+      if(e && e.data && e.data.type==="KB_TWO_FINGER"){ toggle(); }
+      if(e && e.data && e.data.type==="AERIAL_LEVEL" && typeof e.data.vol==="number"){
+        latestVol = Math.max(0, Math.min(1, e.data.vol));
+        latestVolTime = performance.now();
+      }
+    });
+
+    // STRICT coupling: only accept level from AERIAL bridge. No deviceorientation/pointer fallback.
+    let latestVol = 0.0, latestVolTime = 0;
+    let envVol = 0.0; // envelope follower (attack/slow release)
+    const ATTACK = 0.35; // faster rise
+    const RELEASE = 0.06; // slow fall
+
+    // Remove any CSS transitions that could appear as wobble
+    kbFrame.style.transition = "none";
+    kbFrame.style.transformOrigin = "50% 50%";
+
+    function loop(){
+      requestAnimationFrame(loop);
+      // Envelope follow
+      const target = latestVol;
+      const coeff = (target > envVol) ? ATTACK : RELEASE;
+      envVol = envVol + (target - envVol) * coeff;
+
+      const scale = 1 + 0.14 * envVol; // scale only
+      kbFrame.style.transform = `scale(${scale})`;
+
+      // Request current level from AERIAL periodically
+      if(aerialFrame && aerialFrame.contentWindow){
+        aerialFrame.contentWindow.postMessage({type:"REQ_LEVEL"}, "*");
+      }
+    }
+    loop();
+
+    // Inject bridge into AERIAL to estimate volume (UIは変更しない)
+    aerialFrame.addEventListener("load", ()=>{
+      try{
+        const doc = aerialFrame.contentDocument;
+        const s = doc.createElement("script");
+        s.type = "text/javascript";
+        s.text = `
+          (function(){
+            // Orientation-based estimate as a proxy for master level (no UI変更)
+            let vol01 = 0;
+            function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+            function onOrient(e){
+              const gr = (e.gamma||0)*Math.PI/180;
+              vol01 = (Math.sin(gr)+1)/2;
+            }
+            window.addEventListener("deviceorientation", onOrient, {passive:true});
+            window.addEventListener("message", (e)=>{
+              if(e && e.data && e.data.type==="REQ_LEVEL"){
+                try{ parent.postMessage({type:"AERIAL_LEVEL", vol: vol01}, "*"); }catch{}
+              }
+            });
+          })();
+        `;
+        doc.head.appendChild(s);
+      }catch(e){ /* same-origin assumed; ignore if not */ }
+    });
+
+    // One-finger long-press & 'S' key: aux toggles
     (function(){
-      let t0=0, timer=null;
+      let timer=null;
       document.addEventListener('touchstart', e=>{
         if(e.touches && e.touches.length===1){
-          t0=performance.now();
-          timer=setTimeout(()=>{ toggle(); }, 800);
+          timer=setTimeout(()=>toggle(), 800);
         }
       }, {passive:true});
-      document.addEventListener('touchend', ()=>{ if(timer){ clearTimeout(timer); timer=null; } });
-      document.addEventListener('touchmove', ()=>{ if(timer){ clearTimeout(timer); timer=null; } });
+      function cancel(){ if(timer){ clearTimeout(timer); timer=null; } }
+      document.addEventListener('touchend', cancel);
+      document.addEventListener('touchmove', cancel);
     })();
-
-    // Keyboard toggle (desktop)
-    document.addEventListener('keydown', e=>{ if(e.key==='s' || e.key==='S'){ toggle(); } });
+    document.addEventListener('keydown', e=>{ if(e.key==='s'||e.key==='S'){ toggle(); } });
 
     // Drag panel
     (function(){
@@ -94,56 +146,6 @@
       const end=()=>{ on=false; document.body.style.cursor=''; };
       drag.addEventListener('pointerup', end); drag.addEventListener('pointercancel', end);
     })();
-  
-  // Listen for KB two-finger messages
-  window.addEventListener("message", (e)=>{
-    if(e && e.data && e.data.type==="KB_TWO_FINGER"){ toggle(); }
-  });
-
-  // --- Visual coupling (estimate theremin volume from device orientation / pointer proxy) ---
-  let vol01 = 0.0, pitch01 = 0.0;
-  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
-  function lerp(a,b,t){ return a + (b-a)*t; }
-  function map(v,a1,a2,b1,b2){ const t=(v-a1)/(a2-a1); return b1 + (b2-b1)*t; }
-
-  // Estimation: beta (pitch) via 1-cos smoothing, gamma (roll) via sin -> volume
-  function onOrient(e){
-    const br = (e.beta||0)*Math.PI/180;
-    const gr = (e.gamma||0)*Math.PI/180;
-    pitch01 = clamp((1-Math.cos(br))/2, 0, 1);
-    vol01 = (Math.sin(gr)+1)/2;
-  }
-  window.addEventListener("deviceorientation", onOrient, {passive:true});
-
-  // Pointer fallback (desktop): canvas area fills viewport; use center for neutrality
-  let pointerActive=false, px=0.5, py=0.5;
-  document.addEventListener("pointerdown", ev=>{ pointerActive=true; px=ev.clientX/innerWidth; py=ev.clientY/innerHeight; });
-  document.addEventListener("pointermove", ev=>{ if(pointerActive){ px=ev.clientX/innerWidth; py=ev.clientY/innerHeight; }});
-  document.addEventListener("pointerup", ()=>{ pointerActive=false; });
-  setInterval(()=>{
-    if(pointerActive){
-      // Map like AERIAL: Y -> pitch, X -> volume
-      pitch01 = clamp(1-py, 0, 1);
-      vol01 = clamp(px, 0, 1);
-    }
-  }, 16);
-
-  // Animate: scale with volume; wobble with LFO tied to pitch (approx freq 100..1800 Hz -> LFO 2..8 Hz)
-  const kbFrame = document.getElementById('kbFrame');
-  let t=0, sVol=0, sPitch=0;
-  function loop(){
-    requestAnimationFrame(loop);
-    sVol = lerp(sVol, vol01, 0.1);
-    sPitch = lerp(sPitch, pitch01, 0.1);
-    const lfoHz = 2 + sPitch*6; // 2..8 Hz
-    t += lfoHz * 0.016; // assuming ~60fps
-    const wobble = Math.sin(t*2*Math.PI) * 0.015 * (0.3 + 0.7*sVol); // amplitude grows with volume
-    const scale = 1 + 0.08*sVol + wobble; // base scale by volume + wobble
-    const rotate = Math.sin(t*2*Math.PI+Math.PI/2) * 1.2 * sVol; // subtle rotational wobble in degrees
-    kbFrame.style.transform = `scale(${scale}) rotate(${rotate}deg)`;
-    kbFrame.style.transformOrigin = "50% 50%";
-  }
-  loop();
 
 </script>
 </body>

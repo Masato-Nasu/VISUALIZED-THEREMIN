@@ -1,8 +1,8 @@
-// sw.js v9 — KB×AERIAL wrapper
-const CACHE="kbxaerial-v9";
+// sw.js v11 — KB×AERIAL wrapper
+const CACHE="kbxaerial-v11";
 const ASSETS=[
   "./",
-  "./index.html?v=9",
+  "./index.html?v=11",
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png",
