@@ -1,10 +1,10 @@
 {
-  "name": "Baby Shapes Neon",
-  "short_name": "BabyShapesNeon",
-  "start_url": "./index.html?v=1.3.3",
+  "name": "KB×AERIAL — from scratch",
+  "short_name": "KB×AERIAL",
+  "start_url": "./index.html?v=1",
   "display": "standalone",
-  "background_color": "#1a1a1a",
-  "theme_color": "#1a1a1a",
+  "background_color": "#0b0c10",
+  "theme_color": "#0b0c10",
   "icons": [
     {
       "src": "icon-192.png",

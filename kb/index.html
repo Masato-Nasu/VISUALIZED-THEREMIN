@@ -1,237 +1,81 @@
-<!doctype html>
-<html lang="ja">
+
+<!doctype html><html lang="ja">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
-<title>Baby Shapes Neon — 全画面再生 (v1.3.3)</title>
-<link rel="manifest" href="./manifest.json?v=1.3.3">
-<meta name="theme-color" content="#1a1a1a">
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"/>
+<title>KB Visuals</title>
 <style>
-  :root{ --bg:#1a1a1a; --panel:#20232bcc; --text:#E8EAF2; --muted:#8b90a1; }
-  html,body{ height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Roboto,"Noto Sans JP",sans-serif; overscroll-behavior:none; }
-  #cv{ position:fixed; inset:0; width:100vw; height:100dvh; display:block; touch-action:none; background:var(--bg); }
-  .controls{ position:fixed; left:0; right:0; bottom:0; padding:12px; display:flex; flex-wrap:wrap; gap:10px; justify-content:center; align-items:center;
-    background:var(--panel); backdrop-filter:saturate(1.05) blur(6px); border-top-left-radius:16px; border-top-right-radius:16px;
-    transition:opacity .2s ease, visibility .2s ease, transform .2s ease; transform:translateY(8px); }
-  .hidden{ opacity:0; visibility:hidden; pointer-events:none; transform:translateY(12px); }
-  .btn{appearance:none;border:0;border-radius:14px;background:#2f6feb;color:#fff; padding:12px 16px;font-size:16px;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
-  .btn:active{transform:translateY(1px)}
-  .range{display:inline-flex;align-items:center;gap:10px;background:#0f1117; color:#E8EAF2; border-radius:14px;padding:10px 12px; box-shadow:0 2px 8px rgba(0,0,0,.25)}
-  input[type="range"]{width:160px}
+  :root{ --bg:#0b0c10; }
+  html,body{ margin:0; height:100%; background:var(--bg); }
+  canvas{ position:fixed; inset:0; display:block; }
 </style>
 </head>
 <body>
 <canvas id="cv"></canvas>
-<div class="controls hidden" id="controls">
-  <label class="btn">🎵 おんがくフォルダ<input id="audDir" type="file" webkitdirectory directory multiple accept="audio/*" hidden></label>
-  <button id="prev" class="btn">← まえ</button>
-  <button id="play" class="btn">▶ / ❚❚</button>
-  <button id="next" class="btn">つぎ →</button>
-  <div class="range">かず <input id="count" type="range" min="3" max="50" step="1" value="22"></div>
-  <div class="range">せんの太さ <input id="thick" type="range" min="2" max="14" step="1" value="6"></div>
-  <div class="range">ひかり <input id="glow" type="range" min="8" max="60" step="1" value="28"></div>
-</div>
-
 <script>
-(() => {
-  const cv = document.getElementById('cv');
-  const ctx = cv.getContext('2d', { alpha:false });
-  const controls = document.getElementById('controls');
-  const countUI = document.getElementById('count');
-  const thickUI = document.getElementById('thick');
-  const glowUI  = document.getElementById('glow');
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d',{alpha:false});
+function fit(){ cv.width=innerWidth*devicePixelRatio; cv.height=innerHeight*devicePixelRatio; }
+addEventListener('resize', fit, {passive:true}); fit();
 
-  // 2本指0.8秒長押しで設定トグル
-  let activePointers = new Map();
-  let holdTimer = null;
-  function onPointerDown(e){
-    activePointers.set(e.pointerId, {x:e.clientX,y:e.clientY});
-    if(activePointers.size>=2 && !holdTimer){
-      holdTimer = setTimeout(()=>{ controls.classList.toggle('hidden'); }, 800);
-    }
+let env=0; // 0..1 from parent (pitch-mapped)
+window.addEventListener('message', (e)=>{
+  if(e && e.data && e.data.type==='PITCH_NORM' && typeof e.data.v==='number'){
+    env = Math.max(0, Math.min(1, e.data.v));
   }
-  function cancelHold(){ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } }
-  function onPointerUp(e){ activePointers.delete(e.pointerId); cancelHold(); }
-  function onPointerMove(e){
-    const p=activePointers.get(e.pointerId);
-    if(p){
-      const dx=Math.abs(e.clientX-p.x), dy=Math.abs(e.clientY-p.y);
-      if(dx>20 || dy>20) cancelHold();
-    }
-  }
-  ['pointerdown','pointerup','pointercancel','pointermove'].forEach(ev=>{
-    cv.addEventListener(ev, (e)=>{
-      if(ev==='pointerdown') onPointerDown(e);
-      if(ev==='pointerup' || ev==='pointercancel') onPointerUp(e);
-      if(ev==='pointermove') onPointerMove(e);
-    }, {passive:false});
-  });
+});
 
-  // 初回タップでフルスクリーン試行
-  cv.addEventListener('pointerdown', async ()=>{
-    if(!document.fullscreenElement){
-      try{ await document.documentElement.requestFullscreen(); }catch(_){}
-    }
-  }, {once:true});
+const COLORS=["#39FF14","#00FFFF","#FF4D6D","#FFD166","#9D4DFF"];
+const TYPES=["circle","triangle","square","star","heart"];
+const shapes=[]; let t=0;
+function starPath(r, spikes=5){ const p=new Path2D(); const step=Math.PI/spikes; p.moveTo(r,0); for(let i=0;i<spikes*2;i++){ const rr=(i%2===0)?r:r*0.45; const a=i*step; p.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);} p.closePath(); return p; }
+function heartPath(r){ const p=new Path2D(); p.moveTo(0,-r*0.2); p.bezierCurveTo(r*0.9,-r*0.9, r*1.4,r*0.5, 0,r*1.2); p.bezierCurveTo(-r*1.4,r*0.5, -r*0.9,-r*0.9, 0,-r*0.2); return p; }
+const starCache=new Map(), heartCache=new Map();
+function getStar(r){ const k=r|0; if(!starCache.has(k)) starCache.set(k, starPath(k)); return starCache.get(k); }
+function getHeart(r){ const k=r|0; if(!heartCache.has(k)) heartCache.set(k, heartPath(k)); return heartCache.get(k); }
 
-  // ===== Audio (continuous)
-  let audList=[], audIdx=0, audio=new Audio(); audio.preload="auto";
-  let actx, analyser, data, playing=false;
-  function ensureAudio(){
-    if(actx) return;
-    actx = new (window.AudioContext||window.webkitAudioContext)();
-    const src = actx.createMediaElementSource(audio);
-    analyser = actx.createAnalyser(); analyser.fftSize=256;
-    data = new Uint8Array(analyser.frequencyBinCount);
-    src.connect(analyser); analyser.connect(actx.destination);
+function reset(){
+  shapes.length=0; const n=22;
+  for(let i=0;i<n;i++){
+    const type=TYPES[i%TYPES.length];
+    const r=70*(0.6+Math.random()*0.6);
+    const x=Math.random()*cv.width, y=Math.random()*cv.height;
+    const rot=Math.random()*Math.PI*2;
+    const vx=(Math.random()-0.5)*0.5, vy=(Math.random()-0.5)*0.5;
+    const color=COLORS[i%COLORS.length];
+    shapes.push({type,x,y,r,rot,vx,vy,pulse:0,color});
   }
-  ['click','touchstart','pointerdown'].forEach(ev=>{
-    window.addEventListener(ev, async ()=>{ ensureAudio(); try{ if(actx.state!=='running') await actx.resume(); }catch(_){ } }, {once:true, passive:true});
-  });
-  function naturalSort(a,b){ return a.name.localeCompare(b.name,'ja',{numeric:true}); }
-  document.getElementById('audDir').addEventListener('change', e=>{
-    ensureAudio();
-    audList = [...e.target.files].filter(f=>f.type.startsWith('audio/')).sort(naturalSort);
-    audIdx=0; if(audList.length) playIndex(audIdx);
-  });
-  async function playIndex(i){
-    if(!audList.length) return;
-    audio.src = URL.createObjectURL(audList[i]);
-    try{ if(actx.state!=='running') await actx.resume(); await audio.play(); playing=true; }catch(e){}
-  }
-  document.getElementById('next').addEventListener('click',()=>{ if(!audList.length)return; audIdx=(audIdx+1)%audList.length; playIndex(audIdx); });
-  document.getElementById('prev').addEventListener('click',()=>{ if(!audList.length)return; audIdx=(audIdx-1+audList.length)%audList.length; playIndex(audIdx); });
-  document.getElementById('play').addEventListener('click', async ()=>{
-    ensureAudio(); if(actx.state!=='running') await actx.resume();
-    if(audio.paused){ await audio.play(); playing=true; } else { audio.pause(); playing=false; }
-  });
-  audio.addEventListener('ended', ()=>{
-    if(audList.length){ audIdx=(audIdx+1)%audList.length; playIndex(audIdx); }
-    else { audio.currentTime=0; audio.play(); }
-  });
+}
+reset();
 
-  // ===== Canvas sizing
-  const dprCap=1.5;
-  function fit(){
-    const dpr=Math.min(window.devicePixelRatio||1, dprCap);
-    const w = Math.floor((window.visualViewport? visualViewport.width : window.innerWidth) * dpr);
-    const h = Math.floor((window.visualViewport? visualViewport.height: window.innerHeight) * dpr);
-    cv.width = Math.max(360, w);
-    cv.height = Math.max(360, h);
+function drawShapeStroke(type,r){
+  switch(type){
+    case "circle": ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke(); break;
+    case "triangle": ctx.beginPath(); const h=r*1.1; ctx.moveTo(0,-h); ctx.lineTo(h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.lineTo(-h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.closePath(); ctx.stroke(); break;
+    case "square": ctx.strokeRect(-r,-r,r*2,r*2); break;
+    case "star": ctx.stroke(getStar(r)); break;
+    case "heart": ctx.stroke(getHeart(r)); break;
   }
-  fit();
-  window.addEventListener('resize', fit, {passive:true});
-  if(window.visualViewport){ visualViewport.addEventListener('resize', fit, {passive:true}); }
+}
 
-  // ===== Shapes
-  const COLORS = ["#39FF14","#00FFFF","#FF4D6D","#FFD166","#9D4DFF"];
-  const TYPES = ["circle","triangle","square","star","heart"];
-  const shapes=[];
-  function starPath(r, spikes=5){ const p=new Path2D(); const step=Math.PI/spikes; p.moveTo(r,0); for(let i=0;i<spikes*2;i++){ const rr=(i%2===0)?r:r*0.45; const a=i*step; p.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);} p.closePath(); return p; }
-  function heartPath(r){ const p=new Path2D(); p.moveTo(0,-r*0.2); p.bezierCurveTo(r*0.9,-r*0.9, r*1.4,r*0.5, 0,r*1.2); p.bezierCurveTo(-r*1.4,r*0.5, -r*0.9,-r*0.9, 0,-r*0.2); return p; }
-  const starCache=new Map(), heartCache=new Map();
-  function getStar(r){ const k=r|0; if(!starCache.has(k)) starCache.set(k, starPath(k)); return starCache.get(k); }
-  function getHeart(r){ const k=r|0; if(!heartCache.has(k)) heartCache.set(k, heartPath(k)); return heartCache.get(k); }
-
-  function resetShapes(){
-    shapes.length=0;
-    const n=Math.max(3, (document.getElementById('count').value|0));
-    for(let i=0;i<n;i++){
-      const type=TYPES[i%TYPES.length];
-      const r=70*(0.6+Math.random()*0.6);
-      const x=Math.random()*cv.width, y=Math.random()*cv.height;
-      const rot=Math.random()*Math.PI*2;
-      const vx=(Math.random()-0.5)*0.5, vy=(Math.random()-0.5)*0.5;
-      const color=COLORS[i%COLORS.length];
-      shapes.push({type,x,y,r,rot,vx,vy,pulse:0,color});
-    }
+function loop(){
+  const w=cv.width,h=cv.height;
+  ctx.fillStyle="#0b0c10"; ctx.fillRect(0,0,w,h);
+  for(const s of shapes){
+    s.x+=s.vx; s.y+=s.vy; s.rot+=0.008;
+    if(s.x<s.r){ s.x=s.r; s.vx=Math.abs(s.vx); } if(s.x>w-s.r){ s.x=w-s.r; s.vx=-Math.abs(s.vx); }
+    if(s.y<s.r){ s.y=s.r; s.vy=Math.abs(s.vy); } if(s.y>h-s.r){ s.y=h-s.r; s.vy=-Math.abs(s.vy); }
+    s.vx*=0.992; s.vy*=0.992;
+    const base = s.r;
+    const scale = 1 + env*0.35; // ただ大きく：envが上がるほど拡大
+    const r = base*scale;
+    ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.rot);
+    ctx.lineJoin="round"; ctx.lineCap="round";
+    ctx.shadowColor=s.color; ctx.shadowBlur=30; ctx.strokeStyle=s.color; ctx.lineWidth=8; drawShapeStroke(s.type,r);
+    ctx.shadowBlur=12; ctx.strokeStyle="#ffffff"; ctx.lineWidth=3; drawShapeStroke(s.type,r);
+    ctx.restore();
   }
-  document.getElementById('count').addEventListener('input', resetShapes);
-  resetShapes();
-
-  // interaction: scatter ALL on touch
-  const chime = new Audio("./Chime.mp3"); chime.volume = 0.25;
-  function toLocal(e){
-    const rect=cv.getBoundingClientRect();
-    return { x:(e.clientX-rect.left)/rect.width*cv.width, y:(e.clientY-rect.top)/rect.height*cv.height };
-  }
-  cv.addEventListener('pointerdown', (e)=>{
-    const p=toLocal(e);
-    for(const s of shapes){
-      const ang=Math.atan2(s.y-p.y, s.x-p.x);
-      const force=3.2 + Math.random()*1.8;
-      s.vx += Math.cos(ang)*force; s.vy += Math.sin(ang)*force;
-      s.pulse = Math.min(1, s.pulse+0.9);
-    }
-    try{ chime.currentTime=0; chime.play(); }catch(_){}
-  });
-
-  // motion
-  async function requestMotionPermission(){
-    try{
-      if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission){
-        await DeviceMotionEvent.requestPermission();
-      }
-    }catch(_){}
-  }
-  document.addEventListener('pointerdown', requestMotionPermission, {once:true});
-  if (window.DeviceMotionEvent){
-    let last=0;
-    window.addEventListener('devicemotion', (e)=>{
-      const a=e.accelerationIncludingGravity||{}; const x=a.x||0,y=a.y||0,z=a.z||0;
-      const s=Math.sqrt(x*x+y*y+z*z);
-      if(s>18 && Date.now()-last>900){
-        const cx=cv.width/2, cy=cv.height/2;
-        for(const sh of shapes){
-          const ang=Math.atan2(sh.y-cy, sh.x-cx);
-          const force = 2.6 + Math.random()*1.6;
-          sh.vx += Math.cos(ang)*force;
-          sh.vy += Math.sin(ang)*force;
-          sh.pulse = Math.min(1, sh.pulse+0.8);
-        }
-        try{ chime.currentTime=0; chime.play(); }catch(_){}
-        last=Date.now();
-      }
-    }, {passive:true});
-  }
-
-  // draw
-  let t=0;
-  function draw(){
-    const w=cv.width,h=cv.height;
-    ctx.fillStyle="#1a1a1a"; ctx.fillRect(0,0,w,h);
-    const lineBase=parseFloat(document.getElementById('thick').value);
-    const glow=parseFloat(document.getElementById('glow').value);
-    for(const s of shapes){
-      s.x+=s.vx; s.y+=s.vy; s.rot+=0.008;
-      if(s.x<s.r){ s.x=s.r; s.vx=Math.abs(s.vx); } if(s.x>w-s.r){ s.x=w-s.r; s.vx=-Math.abs(s.vx); }
-      if(s.y<s.r){ s.y=s.r; s.vy=Math.abs(s.vy); } if(s.y>h-s.r){ s.y=h-s.r; s.vy=-Math.abs(s.vy); }
-      s.vx*=0.992; s.vy*=0.992;
-      const scale = 1 + 0.07*Math.sin(t*0.03 + s.x*0.003) + s.pulse*0.25;
-      const r = s.r * scale; s.pulse *= 0.92;
-      ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.rot);
-      ctx.lineJoin="round"; ctx.lineCap="round";
-      ctx.shadowColor=s.color; ctx.shadowBlur=glow*2; ctx.strokeStyle=s.color; ctx.lineWidth=lineBase*2.4; drawShapeStroke(s.type,r);
-      ctx.shadowBlur=glow; ctx.lineWidth=lineBase*1.5; drawShapeStroke(s.type,r);
-      ctx.shadowBlur=glow*0.3; ctx.strokeStyle="#ffffff"; ctx.lineWidth=Math.max(1,lineBase*0.6); drawShapeStroke(s.type,r);
-      ctx.restore();
-    }
-    t++; requestAnimationFrame(draw);
-  }
-  function drawShapeStroke(type,r){
-    switch(type){
-      case "circle": ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke(); break;
-      case "triangle": ctx.beginPath(); const h=r*1.1; ctx.moveTo(0,-h); ctx.lineTo(h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.lineTo(-h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.closePath(); ctx.stroke(); break;
-      case "square": ctx.strokeRect(-r,-r,r*2,r*2); break;
-      case "star": ctx.stroke(getStar(r)); break;
-      case "heart": ctx.stroke(getHeart(r)); break;
-    }
-  }
-  requestAnimationFrame(draw);
-})();
+  t++; requestAnimationFrame(loop);
+}
+loop();
 </script>
-<script>
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js?v=1.3.3"); }
-</script>
-</body>
-</html>
+</body></html>
