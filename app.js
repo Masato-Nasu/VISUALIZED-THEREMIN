@@ -1,279 +1,196 @@
-// app.js — Theremin Fusion (visual + theremin + BGM + chime + recording)
-let audioCtx, masterGain, thereminGain, osc, bgm, analyser, analyserData, recorder, recChunks = [];
-let started = false;
-let params = {
-  thereminOn: true,
-  bgmOn: false,
-  freqMin: 100, freqMax: 1800,
-  gainMin: 0.0, gainMax: 0.8,
+// app.js — KB screen (visual-only UI) + AERIAL-like audio (minimal change)
+let audioCtx, master, thereminGain, osc, analyser, data, dest, rec, recChunks=[];
+let bgmAudio = null;
+let started=false;
+const P = {
+  // AERIAL-like defaults
+  freqMin: 120, freqMax: 1800,
+  gainMin: 0.0, gainMax: 0.85,
   smooth: 0.12,
   chimeGain: 0.7
 };
-let state = {
-  targetFreq: 440, currentFreq: 440,
-  targetGain: 0.0, currentGain: 0.0,
-  lastMotion: 0, lastShake: 0,
-  pointerActive: false, px: 0.5, py: 0.5
+const S = {
+  fT: 440, fC: 440,
+  gT: 0, gC: 0,
+  pointer:false, px:0.5, py:0.5,
+  lastShake: 0
 };
 
-function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
-function lerp(a,b,t){ return a + (b-a)*t; }
-function map(v, a1, a2, b1, b2){ const t=(v-a1)/(a2-a1); return b1 + (b2-b1)*t; }
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function map(v,a1,a2,b1,b2){ const t=(v-a1)/(a2-a1); return b1+(b2-b1)*t; }
 
-async function ensureAudio(){
-  if (started) return;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  masterGain = audioCtx.createGain(); masterGain.gain.value = 0.9;
-  masterGain.connect(audioCtx.destination);
+async function boot(){
+  if(started) return;
+  audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  master = audioCtx.createGain(); master.gain.value = 0.9; master.connect(audioCtx.destination);
 
-  thereminGain = audioCtx.createGain(); thereminGain.gain.value = 0;
-  thereminGain.connect(masterGain);
+  thereminGain = audioCtx.createGain(); thereminGain.gain.value = 0; thereminGain.connect(master);
 
-  osc = audioCtx.createOscillator();
-  osc.type = "sine";
-  osc.frequency.value = 440;
-  osc.connect(thereminGain);
-  osc.start();
+  osc = audioCtx.createOscillator(); osc.type="sine"; osc.frequency.value=440; osc.connect(thereminGain); osc.start();
 
-  analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 512;
-  analyserData = new Uint8Array(analyser.frequencyBinCount);
-  masterGain.connect(analyser);
+  analyser = audioCtx.createAnalyser(); analyser.fftSize = 512; data = new Uint8Array(analyser.frequencyBinCount); master.connect(analyser);
 
-  // MediaRecorder (from destination stream)
-  const dest = audioCtx.createMediaStreamDestination();
-  masterGain.connect(dest);
-  recorder = new MediaRecorder(dest.stream);
-  recorder.ondataavailable = e => { if (e.data.size>0) recChunks.push(e.data); };
-  recorder.onstop = () => {
-    const blob = new Blob(recChunks, {type:"audio/webm"});
-    recChunks = [];
+  dest = audioCtx.createMediaStreamDestination(); master.connect(dest);
+  rec = new MediaRecorder(dest.stream);
+  rec.ondataavailable = e=>{ if(e.data.size>0) recChunks.push(e.data); };
+  rec.onstop = ()=>{
+    const blob = new Blob(recChunks,{type:"audio/webm"}); recChunks=[];
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `theremin-${Date.now()}.webm`;
-    a.click();
-    setTimeout(()=>URL.revokeObjectURL(url), 10000);
+    const a = document.createElement("a"); a.href=url; a.download=`kbxaerial-${Date.now()}.webm`; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),10000);
   };
 
-  started = true;
-}
-
-function startStopRecording(){
-  if (!started) return;
-  if (recorder.state === "recording"){
-    recorder.stop();
-    document.getElementById("recBtn").textContent = "● REC";
-  } else {
-    recChunks = [];
-    recorder.start();
-    document.getElementById("recBtn").textContent = "■ STOP";
+  // iOS permission prompts
+  if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function"){
+    try{ await DeviceOrientationEvent.requestPermission(); }catch{}
   }
-}
-
-function setBgmFile(file){
-  if (!file) return;
-  if (!bgm){
-    bgm = new Audio();
-    bgm.loop = true;
-    bgm.onplay = ()=> params.bgmOn = true;
-    bgm.onpause = ()=> params.bgmOn = false;
+  if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function"){
+    try{ await DeviceMotionEvent.requestPermission(); }catch{}
   }
-  bgm.src = URL.createObjectURL(file);
-  bgm.play();
+  started=true;
 }
 
-function triggerChime(){
-  if (!started) return;
-  const tnow = audioCtx.currentTime;
-  const g = audioCtx.createGain(); g.gain.value = 0; g.connect(masterGain);
-  const o = audioCtx.createOscillator(); o.type = "sine"; o.frequency.setValueAtTime(880, tnow);
-  o.connect(g);
-  g.gain.linearRampToValueAtTime(params.chimeGain, tnow + 0.005);
-  o.start();
-  o.frequency.exponentialRampToValueAtTime(440, tnow + 0.18);
-  g.gain.exponentialRampToValueAtTime(0.0001, tnow + 0.23);
-  o.stop(tnow + 0.25);
+function chime(){
+  if(!started) return;
+  const t=audioCtx.currentTime;
+  const g=audioCtx.createGain(); g.gain.value=0; g.connect(master);
+  const o=audioCtx.createOscillator(); o.type="sine"; o.frequency.setValueAtTime(880,t); o.connect(g);
+  g.gain.linearRampToValueAtTime(P.chimeGain, t+0.005);
+  o.frequency.exponentialRampToValueAtTime(440, t+0.18);
+  g.gain.exponentialRampToValueAtTime(0.0001, t+0.23);
+  o.stop(t+0.25);
+}
+
+function setBgm(file){
+  if(!file) return;
+  if(!bgmAudio){
+    bgmAudio = new Audio();
+    bgmAudio.loop = true;
+  }
+  bgmAudio.src = URL.createObjectURL(file);
+  bgmAudio.play();
 }
 
 function onPointer(e){
-  state.pointerActive = (e.type !== "pointerup" && e.type !== "pointerleave");
-  if (state.pointerActive){
-    const rect = viz.getBoundingClientRect();
-    state.px = clamp((e.clientX - rect.left) / rect.width, 0, 1);
-    state.py = clamp((e.clientY - rect.top) / rect.height, 0, 1);
+  S.pointer = (e.type!=="pointerup" && e.type!=="pointerleave");
+  if(S.pointer){
+    const r=canvas.getBoundingClientRect();
+    S.px = clamp((e.clientX-r.left)/r.width,0,1);
+    S.py = clamp((e.clientY-r.top)/r.height,0,1);
   }
 }
-addEventListener("pointerdown", e => { if (e.target.id==="viz") triggerChime(); onPointer(e); });
+addEventListener("pointerdown", e=>{ if(e.target.id==="canvas"){ chime(); } onPointer(e); });
 addEventListener("pointermove", onPointer);
 addEventListener("pointerup", onPointer);
 addEventListener("pointerleave", onPointer);
 
-function mapOrientationToTheremin(beta, gamma){
-  // beta: [-180,180] pitch. We want a smooth "hill" with peaks at +-180, valley near 0 → use 1 - cos(beta)
-  const rad = (beta||0) * Math.PI/180;
-  const smoothPitch = 1 - Math.cos(rad); // range [0,2] with 0 at 0deg, 2 at 180/-180
-  const pitch01 = clamp(smoothPitch/2, 0, 1); // [0,1]
-
-  // volume from roll gamma [-90,90] → use (sin mapped 0→1)
-  const gRad = (gamma||0) * Math.PI/180;
-  const vol01 = (Math.sin(gRad) + 1)/2; // [0,1]
-
-  return { pitch01, vol01 };
+function mapOrientation(beta,gamma){
+  // AERIALの方針を踏襲：β(ピッチ)は 1-cos で360度端の段差を解消、γ(ロール)はsinで自然なボリューム
+  const br = (beta||0)*Math.PI/180;
+  const pitch01 = clamp((1-Math.cos(br))/2,0,1);
+  const gr = (gamma||0)*Math.PI/180;
+  const vol01 = (Math.sin(gr)+1)/2;
+  return {pitch01, vol01};
+}
+function onOrient(e){
+  const {beta, gamma} = e;
+  const {pitch01, vol01} = mapOrientation(beta, gamma);
+  S.fT = map(pitch01,0,1,P.freqMin,P.freqMax);
+  S.gT = map(vol01,0,1,P.gainMin,P.gainMax);
+}
+function onMotion(e){
+  const a=e.accelerationIncludingGravity; if(!a) return;
+  const m=Math.sqrt((a.x||0)**2 + (a.y||0)**2 + (a.z||0)**2);
+  const now=performance.now();
+  if(m>24 && now-S.lastShake>600){ S.lastShake=now; chime(); }
 }
 
-function onDeviceOrientation(e){
-  const {beta, gamma} = e; // pitch, roll
-  const { pitch01, vol01 } = mapOrientationToTheremin(beta, gamma);
-  state.targetFreq = map(pitch01, 0, 1, params.freqMin, params.freqMax);
-  state.targetGain = map(vol01, 0, 1, params.gainMin, params.gainMax);
-}
-function onDeviceMotion(e){
-  const a = e.accelerationIncludingGravity;
-  if (!a) return;
-  const mag = Math.sqrt((a.x||0)**2 + (a.y||0)**2 + (a.z||0)**2);
-  const now = performance.now();
-  if (mag > 24 && now - state.lastShake > 600){
-    state.lastShake = now;
-    triggerChime();
-  }
+async function start(){
+  await boot();
+  hint.classList.add("hidden");
+  chime();
 }
 
-async function startAudio(){
-  await ensureAudio();
-  if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function"){
-    try { await DeviceOrientationEvent.requestPermission(); } catch(e){}
-  }
-  if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function"){
-    try { await DeviceMotionEvent.requestPermission(); } catch(e){}
-  }
+function toggleRec(){
+  if(!started) return;
+  if(rec.state==="recording"){ rec.stop(); } else { recChunks=[]; rec.start(); }
 }
 
-function updateParamsUI(){
-  const freqMin = Number(document.getElementById("freqMin").value);
-  const freqMax = Number(document.getElementById("freqMax").value);
-  params.freqMin = Math.min(freqMin, freqMax-1);
-  params.freqMax = Math.max(freqMin+1, freqMax);
-  params.gainMax = Number(document.getElementById("gainMax").value);
-  params.smooth = Number(document.getElementById("smooth").value);
-  document.getElementById("freqMinVal").textContent = params.freqMin;
-  document.getElementById("freqMaxVal").textContent = params.freqMax;
-  document.getElementById("gainMaxVal").textContent = params.gainMax.toFixed(2);
-  document.getElementById("smoothVal").textContent = params.smooth.toFixed(2);
-}
-
-function loop(){
-  requestAnimationFrame(loop);
-  if (!started) return;
-
-  // Input from pointer (desktop) overrides orientation while active
-  if (state.pointerActive){
-    state.targetFreq = map(1-state.py, 0, 1, params.freqMin, params.freqMax);
-    state.targetGain = map(state.px, 0, 1, params.gainMin, params.gainMax);
-  }
-
-  // Smooth towards target
-  const t = clamp(params.smooth, 0.01, 1.0);
-  state.currentFreq = lerp(state.currentFreq, state.targetFreq, t);
-  state.currentGain = lerp(state.currentGain, state.targetGain, t);
-
-  osc.frequency.setValueAtTime(state.currentFreq, audioCtx.currentTime);
-  thereminGain.gain.setValueAtTime(params.thereminOn ? state.currentGain : 0, audioCtx.currentTime);
-
-  // Visuals
-  drawVisual();
-}
-
-let gl, ctx2d, viz, off;
-let k = { slices: 10, time: 0, brightness: 0.7 };
-function initVisual(){
-  viz = document.getElementById("viz");
-  const dpr = Math.min(window.devicePixelRatio||1, 2);
-  viz.width = Math.floor(viz.clientWidth * dpr);
-  viz.height = Math.floor(viz.clientHeight * dpr);
+// ---- KB Visual (square, radial wedges; kept simple, no UI) ----
+let canvas, ctx, off, dpr=1;
+let K={t:0};
+function initCanvas(){
+  canvas=document.getElementById("canvas");
+  dpr = Math.min(devicePixelRatio||1,2);
+  const L=Math.min(innerWidth, innerHeight);
+  canvas.width = Math.floor(L*dpr);
+  canvas.height = Math.floor(L*dpr);
   off = document.createElement("canvas");
-  off.width = viz.width; off.height = viz.height;
-  ctx2d = off.getContext("2d");
+  off.width = canvas.width; off.height = canvas.height;
+  ctx = off.getContext("2d");
 }
-addEventListener("resize", initVisual);
+addEventListener("resize", initCanvas);
 
-function drawVisual(){
-  if (!ctx2d || !viz) return;
-  // Read analyser to modulate
-  analyser.getByteFrequencyData(analyserData);
-  let sum = 0;
-  for (let i=0;i<analyserData.length;i++) sum += analyserData[i];
-  const energy = sum / (analyserData.length * 255); // 0..1
-  k.time += 0.005 + energy*0.02;
-  const brightness = 0.4 + energy*0.6;
+function draw(){
+  requestAnimationFrame(draw);
+  if(!ctx||!canvas) return;
+  if(started) analyser.getByteFrequencyData(data);
+  let sum=0; for(let i=0;i<(data?data.length:0);i++) sum+=data[i];
+  const energy = data? sum/(data.length*255) : 0;
 
-  // Base gradient background
-  ctx2d.clearRect(0,0,off.width, off.height);
-  const g = ctx2d.createRadialGradient(off.width/2, off.height/2, 10, off.width/2, off.height/2, Math.max(off.width, off.height)/2);
-  g.addColorStop(0, `rgba(160,180,255,${0.12+energy*0.2})`);
-  g.addColorStop(1, `rgba(10,10,18,1)`);
-  ctx2d.fillStyle = g;
-  ctx2d.fillRect(0,0,off.width, off.height);
-
-  // Simple kaleidoscope-like wedges
-  const cx = off.width/2, cy = off.height/2;
-  const R = Math.max(off.width, off.height)*0.6;
-  const slices = 12;
-  for (let i=0; i<slices; i++){
-    const ang0 = (i/slices)*Math.PI*2 + k.time*0.6;
-    const ang1 = ((i+1)/slices)*Math.PI*2 + k.time*0.6;
-    const mid = (ang0+ang1)/2;
-    const amp = 0.25 + energy*0.75;
-    const r1 = R*(0.2 + amp*0.6);
-    const r2 = R*(0.8 + amp*0.2*Math.sin(ang0*3+energy*10));
-    ctx2d.beginPath();
-    ctx2d.moveTo(cx + Math.cos(ang0)*r1, cy + Math.sin(ang0)*r1);
-    ctx2d.lineTo(cx + Math.cos(ang1)*r1, cy + Math.sin(ang1)*r1);
-    ctx2d.lineTo(cx + Math.cos(mid)*r2, cy + Math.sin(mid)*r2);
-    ctx2d.closePath();
-    const alpha = 0.2 + energy*0.5;
-    ctx2d.fillStyle = `rgba(${180+Math.sin(i+energy*4)*50|0}, ${170+Math.sin(i*1.3+energy*3)*40|0}, ${255}, ${alpha})`;
-    ctx2d.fill();
+  // Smooth to targets (AERIAL smooth)
+  if(started){
+    const t = clamp(P.smooth, 0.05, 0.6);
+    S.fC = lerp(S.fC, S.fT, t);
+    S.gC = lerp(S.gC, S.gT, t);
+    osc.frequency.setValueAtTime(S.fC, audioCtx.currentTime);
+    thereminGain.gain.setValueAtTime(S.gC, audioCtx.currentTime);
   }
 
-  const ctx = viz.getContext("2d");
-  ctx.clearRect(0,0,viz.width,viz.height);
-  ctx.drawImage(off, 0,0);
-}
+  // KB-like: crisp square, radial geometry, modest motion
+  ctx.clearRect(0,0,off.width,off.height);
+  // background
+  ctx.fillStyle="#0b0c10"; ctx.fillRect(0,0,off.width,off.height);
 
-function toggleTheremin(el){
-  params.thereminOn = el.checked;
-}
-function playPauseBgm(el){
-  if (!bgm) return;
-  if (el.checked) bgm.play(); else bgm.pause();
-}
+  const cx=off.width/2, cy=off.height/2;
+  const R=Math.min(off.width,off.height)*0.5;
+  const slices=16;
+  K.t += 0.004 + energy*0.02;
 
-document.addEventListener("DOMContentLoaded", () => {
-  initVisual();
-  loop();
-  updateParamsUI();
-
-  // Permissions & listeners
-  window.addEventListener("deviceorientation", onDeviceOrientation);
-  window.addEventListener("devicemotion", onDeviceMotion);
-
-  // File input
-  const bgmInput = document.getElementById("bgmFile");
-  bgmInput.addEventListener("change", (e)=> setBgmFile(e.target.files[0]));
-
-  // UI controls
-  document.getElementById("startBtn").addEventListener("click", async () => {
-    await startAudio();
-    triggerChime();
-  });
-  document.getElementById("recBtn").addEventListener("click", startStopRecording);
-
-  ["freqMin","freqMax","gainMax","smooth"].forEach(id => {
-    document.getElementById(id).addEventListener("input", updateParamsUI);
-  });
-
-  // Install SW
-  if ("serviceWorker" in navigator){
-    navigator.serviceWorker.register("./sw.js");
+  for(let i=0;i<slices;i++){
+    const a0=(i/slices)*Math.PI*2 + K.t*0.7;
+    const a1=((i+1)/slices)*Math.PI*2 + K.t*0.7;
+    const mid=(a0+a1)/2;
+    const amp=0.15 + energy*0.6;
+    const r1=R*(0.2+amp*0.4);
+    const r2=R*(0.85+0.1*Math.sin(mid*3+energy*6));
+    ctx.beginPath();
+    ctx.moveTo(cx+Math.cos(a0)*r1, cy+Math.sin(a0)*r1);
+    ctx.lineTo(cx+Math.cos(a1)*r1, cy+Math.sin(a1)*r1);
+    ctx.lineTo(cx+Math.cos(mid)*r2, cy+Math.sin(mid)*r2);
+    ctx.closePath();
+    const alpha=0.18 + energy*0.45;
+    ctx.fillStyle=`rgba(${160+Math.sin(i*1.1)*40|0}, ${170+Math.sin(i*0.9+1.2)*35|0}, 245, ${alpha})`;
+    ctx.fill();
   }
+
+  const gctx = document.getElementById("canvas").getContext("2d");
+  gctx.clearRect(0,0,canvas.width,canvas.height);
+  gctx.drawImage(off,0,0);
+}
+
+document.addEventListener("DOMContentLoaded",()=>{
+  initCanvas();
+  draw();
+  window.addEventListener("deviceorientation", onOrient);
+  window.addEventListener("devicemotion", onMotion);
+
+  document.getElementById("start").addEventListener("click", start);
+  document.getElementById("tap").addEventListener("click", chime);
+  document.getElementById("bgm").addEventListener("change", e=>setBgm(e.target.files[0]));
+  document.getElementById("rec").addEventListener("click", toggleRec);
+
+  // SW
+  if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js"); }
 });
