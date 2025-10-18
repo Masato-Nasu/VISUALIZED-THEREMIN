@@ -1,151 +1,254 @@
+
 <!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"/>
-<title>KB×AERIAL — android v5</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>KB Visual Theremin — edgeSwipe</title>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#0b0c10">
 <style>
-  html,body{ margin:0; height:100%; background:#0b0c10; touch-action:none; } /* Android PWA: disable gestures globally */
-  #kbFrame{ position:fixed; inset:0; border:0; width:100%; height:100%; }
-  #panel{ position:fixed; right:16px; bottom:16px; width:min(520px,96vw); height:min(70vh,560px);
-           background:#000; border:1px solid #2a2a33; border-radius:14px; overflow:hidden;
-           box-shadow:0 16px 48px rgba(0,0,0,.5); display:none; z-index:20; }
-  #drag{ position:absolute; inset:0 0 auto 0; height:24px; background:#111114; color:#9aa0a6; font:12px/24px ui-sans-serif; padding-left:10px; cursor:move; z-index:21; }
-  #aerialFrame{ position:absolute; inset:24px 0 0 0; width:100%; height:calc(100% - 24px); border:0; background:#0b0d11; }
-  #hint{ position:fixed; right:10px; top:10px; font:600 12px ui-sans-serif; color:#cfd3ff; opacity:.85; background:#111114cc; padding:6px 8px; border-radius:10px; border:1px solid #2a2a33; z-index:30; }
+  :root{
+    --bg:#0b0c10; --glass:#12131acc; --line:#2a2a33; --txt:#e7e9ff;
+    --accent:#6ea8ff; --accent2:#8ef0c0;
+  }
+  html,body{ margin:0; height:100%; background:var(--bg); touch-action:none; }
+  #cv{ position:fixed; inset:0; display:block; }
+  /* Edge swipe area (bottom 28px) */
+  #edge{ position:fixed; left:0; right:0; bottom:0; height:28px; z-index:4; }
+  /* Panel */
+  #panel{ position:fixed; left:0; right:0; bottom:-68vh; height:68vh; z-index:5;
+          background:var(--glass); backdrop-filter: blur(10px);
+          border-top:1px solid var(--line); border-radius:16px 16px 0 0;
+          color:var(--txt); font:14px/1.5 system-ui, -apple-system, "Noto Sans JP", sans-serif;
+          box-shadow:0 -24px 60px rgba(0,0,0,.45); transition: transform .28s cubic-bezier(.2,.8,.2,1);
+          transform: translateY(0); }
+  #panel.show{ transform: translateY(-68vh); }
+  #grab{ height:36px; display:flex; align-items:center; gap:10px; padding:0 12px; cursor:grab; user-select:none; }
+  #grab:active{ cursor:grabbing; }
+  #bar{ width:48px; height:4px; border-radius:3px; background:#3b3f55; margin:0 auto; }
+  #controls{ padding:8px 14px 14px; display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+  .card{ background:#151722; border:1px solid var(--line); border-radius:12px; padding:10px; }
+  .row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .slider{ width:100%; }
+  .btn{ appearance:none; border:1px solid var(--line); background:#171a26; color:var(--txt);
+        border-radius:10px; padding:8px 12px; }
+  .btn:active{ transform: translateY(1px); }
+  #hud{ position:fixed; left:8px; top:8px; z-index:6; color:#cfe4ff; font:12px system-ui;
+        background:#0f1320cc; border:1px solid #334; padding:6px 8px; border-radius:10px; }
 </style>
 </head>
 <body>
-  <iframe id="kbFrame" src="./kb/index.html?v=5" allow="fullscreen"></iframe>
-  <div id="panel">
-    <div id="drag">操作パネル（✌ 二本指長押しで表示/非表示・ドラッグ移動）</div>
-    <iframe id="aerialFrame" src="./aerial/hum-theremin-recorder-nosw.html?v=22.2" allow="autoplay; microphone; fullscreen"></iframe>
+<canvas id="cv"></canvas>
+<div id="edge"></div>
+<section id="panel" aria-hidden="true">
+  <div id="grab">
+    <div id="bar"></div>
+    <button id="close" class="btn" style="margin-left:auto;">✕</button>
   </div>
-  <div id="hint">✌ 二本指長押しで操作パネル ／ ピッチ高→拡大・低→縮小（Android最適化）</div>
+  <div id="controls">
+    <div class="card">
+      <div class="row"><strong>Theremin</strong><span id="readHz">hz: -</span></div>
+      <div class="row"><label>モード</label>
+        <select id="mode" class="btn">
+          <option value="touch">タッチ（X=ピッチ / Y=音量）</option>
+          <option value="mic">マイク追従（声のピッチ）</option>
+        </select>
+      </div>
+      <div class="row"><label>ピッチ範囲</label>
+        <input id="fmin" class="slider" type="range" min="80" max="400" step="1" value="120">
+        <input id="fmax" class="slider" type="range" min="800" max="2400" step="10" value="1800">
+      </div>
+      <div class="row"><label>波形</label>
+        <select id="wave" class="btn">
+          <option>sine</option><option>triangle</option><option>square</option><option>sawtooth</option>
+        </select>
+      </div>
+    </div>
+    <div class="card">
+      <div class="row"><strong>ビジュアル</strong><span id="readEnv">env: -</span></div>
+      <div class="row"><label>拡大量</label>
+        <input id="gain" class="slider" type="range" min="0.1" max="0.6" step="0.01" value="0.30">
+      </div>
+      <div class="row"><label>戻りの速さ</label>
+        <input id="rel" class="slider" type="range" min="0.2" max="0.95" step="0.01" value="0.60">
+      </div>
+    </div>
+  </div>
+</section>
+<div id="hud">上スワイプで操作パネル / 画面タッチで演奏</div>
 
 <script>
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js'); }
 
-const panel=document.getElementById('panel'), hint=document.getElementById('hint');
-const kbFrame=document.getElementById('kbFrame'), aerialFrame=document.getElementById('aerialFrame');
-function setPanel(show){ panel.style.display=show?'block':'none'; if(hint) hint.style.opacity=show?0.6:0.9; }
-function togglePanel(){ setPanel(panel.style.display!=='block'); }
-setPanel(true); setTimeout(()=>setPanel(false), 1500);
+/* ===== Canvas visuals (KB風) ===== */
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d',{alpha:false});
+function fit(){ cv.width=innerWidth*devicePixelRatio; cv.height=innerHeight*devicePixelRatio; }
+addEventListener('resize', fit, {passive:true}); fit();
 
-// Two-finger long-press (0.8s) — pointer + touch; global touch-action:none already applied
-(function(){
-  const active=new Map(); let holdTimer=null;
-  const cancel=()=>{ if(holdTimer){ clearTimeout(holdTimer); holdTimer=null; } };
-  const moved=(p,e)=> Math.abs(e.clientX-p.x)>18 || Math.abs(e.clientY-p.y)>18; // 少し厳しめ
+const COLORS=["#87c7ff","#39FF14","#FFD166","#FF4D6D","#9D4DFF"];
+const TYPES=["circle","triangle","square","star","heart"];
+const shapes=[];
+function starPath(r, spikes=5){ const p=new Path2D(); const step=Math.PI/spikes; p.moveTo(r,0); for(let i=0;i<spikes*2;i++){ const rr=(i%2===0)?r:r*0.45; const a=i*step; p.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);} p.closePath(); return p; }
+function heartPath(r){ const p=new Path2D(); p.moveTo(0,-r*0.2); p.bezierCurveTo(r*0.9,-r*0.9, r*1.4,r*0.5, 0,r*1.2); p.bezierCurveTo(-r*1.4,r*0.5, -r*0.9,-r*0.9, 0,-r*0.2); return p; }
+const starCache=new Map(), heartCache=new Map();
+function getStar(r){ const k=r|0; if(!starCache.has(k)) starCache.set(k, starPath(k)); return starCache.get(k); }
+function getHeart(r){ const k=r|0; if(!heartCache.has(k)) heartCache.set(k, heartPath(k)); return heartCache.get(k); }
 
-  document.addEventListener('pointerdown', e=>{ active.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(active.size>=2 && !holdTimer) holdTimer=setTimeout(()=>togglePanel(),800); if(active.size>=2) e.preventDefault(); }, {capture:true, passive:false});
-  document.addEventListener('pointermove', e=>{ const p=active.get(e.pointerId); if(p && moved(p,e)) cancel(); if(active.size>=2) e.preventDefault(); }, {capture:true, passive:false});
-  ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>{ document.addEventListener(ev, e=>{ active.delete(e.pointerId); cancel(); }, {capture:true, passive:false}); });
-
-  let tc=0, tPts=[], tTimer=null; const tCancel=()=>{ if(tTimer){ clearTimeout(tTimer); tTimer=null; } };
-  document.addEventListener('touchstart', e=>{ tc=e.touches.length; tPts=Array.from(e.touches).map(t=>({x:t.clientX,y:t.clientY})); if(tc>=2 && !tTimer){ tTimer=setTimeout(()=>togglePanel(),800); e.preventDefault(); } }, {capture:true, passive:false});
-  document.addEventListener('touchmove', e=>{ if(tc>=2){ const mv=Array.from(e.touches).some((t,i)=>{ const p=tPts[i]||tPts[0]; return Math.abs(t.clientX-p.x)>18||Math.abs(t.clientY-p.y)>18; }); if(mv) tCancel(); e.preventDefault(); } }, {capture:true, passive:false});
-  document.addEventListener('touchend', ()=>{ tCancel(); tc=0; }, {capture:true, passive:false});
-  document.addEventListener('touchcancel', ()=>{ tCancel(); tc=0; }, {capture:true, passive:false});
-})();
-
-// Inject two-finger into iframes too
-function injectTwoFinger(frameEl, msgType){ if(!frameEl) return; frameEl.addEventListener('load', ()=>{ try{ const d=frameEl.contentDocument; const st=d.createElement('style'); st.textContent='html,body,*{touch-action:none!important;-ms-touch-action:none!important;}'; d.head.appendChild(st); const s=d.createElement('script'); s.type='text/javascript'; s.text=`
-  (function(){
-    const active=new Map(); let timer=null;
-    const cancel=()=>{ if(timer){ clearTimeout(timer); timer=null; } };
-    const moved=(p,e)=> Math.abs(e.clientX-p.x)>18 || Math.abs(e.clientY-p.y)>18;
-    document.addEventListener('pointerdown', e=>{ active.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(active.size>=2 && !timer){ timer=setTimeout(()=>{ try{ parent.postMessage({type:"__MSG__"}, "*"); }catch{} },800); e.preventDefault(); e.stopImmediatePropagation(); return false; } }, {capture:true, passive:false});
-    document.addEventListener('pointermove', e=>{ const p=active.get(e.pointerId); if(p && moved(p,e)) cancel(); if(active.size>=2){ e.preventDefault(); e.stopImmediatePropagation(); return false; } }, {capture:true, passive:false});
-    ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>{ document.addEventListener(ev, e=>{ active.delete(e.pointerId); cancel(); }, {capture:true, passive:false}); });
-    let tc=0, tPts=[], tTimer=null; const tCancel=()=>{ if(tTimer){ clearTimeout(tTimer); tTimer=null; } };
-    document.addEventListener('touchstart', e=>{ tc=e.touches.length; tPts=Array.from(e.touches).map(t=>({x:t.clientX,y:t.clientY})); if(tc>=2 && !tTimer){ tTimer=setTimeout(()=>{ try{ parent.postMessage({type:"__MSG__"}, "*"); }catch{} },800); e.preventDefault(); e.stopImmediatePropagation(); return false; } }, {capture:true, passive:false});
-    document.addEventListener('touchmove', e=>{ if(tc>=2){ const mv=Array.from(e.touches).some((t,i)=>{ const p=tPts[i]||tPts[0]; return Math.abs(t.clientX-p.x)>18||Math.abs(t.clientY-p.y)>18; }); if(mv) tCancel(); e.preventDefault(); e.stopImmediatePropagation(); return false; } }, {capture:true, passive:false});
-    document.addEventListener('touchend', ()=>{ tCancel(); tc=0; }, {capture:true, passive:false});
-    document.addEventListener('touchcancel', ()=>{ tCancel(); tc=0; }, {capture:true, passive:false});
-  })();
-`; s.text = s.text.replace(/__MSG__/g, msgType); d.head.appendChild(s); }catch(_ ){} }); }
-injectTwoFinger(kbFrame, 'KB_TWO_FINGER');
-injectTwoFinger(aerialFrame, 'AERIAL_TWO_FINGER');
-window.addEventListener('message', (e)=>{ if(e?.data?.type==='KB_TWO_FINGER' || e?.data?.type==='AERIAL_TWO_FINGER') togglePanel(); });
-
-// AERIAL branding mask
-aerialFrame.addEventListener('load', ()=>{ try{ const d=aerialFrame.contentDocument; const st=d.createElement('style'); st.textContent='h1, header, [class*=title], [class*=header], [data-brand]{display:none!important;} body{font-family:system-ui,\'Noto Sans JP\',sans-serif;}'; d.head.appendChild(st); }catch(_ ){} });
-
-// Pitch bridge injection
-aerialFrame.addEventListener('load', ()=>{ try{ const d=aerialFrame.contentDocument; const s=d.createElement('script'); s.type='text/javascript'; s.text=`
-  (function(){
-    let analyser=null, hooked=false, ctx=null;
-    function loop(a, ctx){ const N=2048, buf=new Float32Array(N), sr=ctx.sampleRate||48000;
-      const step=()=>{ a.getFloatTimeDomainData(buf); let rms=0; for(let i=0;i<N;i++) rms+=buf[i]*buf[i]; rms=Math.sqrt(rms/N);
-        if(rms>0.0035){ let mean=0; for(let i=0;i<N;i++) mean+=buf[i]; mean/=N; for(let i=0;i<N;i++) buf[i]-=mean;
-          let best=-1, bc=0; for(let off=20; off<N/2; off++){ let c=0; for(let i=0;i<N-off;i++) c+=buf[i]*buf[i+off]; c/=(N-off); if(c>bc){ bc=c; best=off; } }
-          if(best>0){ const hz=sr/best; try{ parent.postMessage({type:'AERIAL_PITCH_HZ', hz}, '*'); }catch{} }
-        }
-        requestAnimationFrame(step);
-      }; requestAnimationFrame(step); }
-    function hook(){ const cs=[window.masterGain, window.master, window.MainGain, window.master_out, window.gMaster];
-      for(const g of cs){ try{ if(g && g.context && g.gain){ ctx=g.context; const tee=ctx.createGain(); tee.gain.value=1; try{ g.disconnect(); }catch{} g.connect(tee); tee.connect(ctx.destination); analyser=ctx.createAnalyser(); analyser.fftSize=2048; tee.connect(analyser); hooked=true; loop(analyser, ctx); return true; } }catch{} } return false; }
-    if(!hook()){ const _c=AudioNode.prototype.connect; AudioNode.prototype.connect=function(){ try{ const ctx=this.context; for(let i=0;i<arguments.length;i++){ if(arguments[i]===ctx.destination && !hooked){ const tee=ctx.createGain(); tee.gain.value=1; _c.call(this, tee); _c.call(tee, ctx.destination); analyser=ctx.createAnalyser(); analyser.fftSize=2048; _c.call(tee, analyser); hooked=true; loop(analyser, ctx); return; } } }catch{} return _c.apply(this, arguments); }; }
-  })();
-`; d.head.appendChild(s); }catch(_ ){} });
-
-// Parent: map pitch -> KB (shrink follows). Also send explicit 'SCALE' for KB-centering injector.
-const FMIN=120, FMAX=1800, ATTACK=0.75, RELEASE=0.6, STEP_UP_MAX=0.18, STEP_DOWN_MAX=0.16;
-let env=0, prevTarget=0, med=[];
-function hz2norm(hz){ const c=Math.max(FMIN, Math.min(FMAX, hz||FMIN)); return (Math.log(c)-Math.log(FMIN))/(Math.log(FMAX)-Math.log(FMIN)); }
-function applyPitch(hz){ let n=hz2norm(hz); med.push(n); if(med.length>5) med.shift(); const mid=[...med].sort((a,b)=>a-b)[Math.floor(med.length/2)];
-  const up=Math.min(mid-prevTarget, STEP_UP_MAX), dn=Math.max(mid-prevTarget, -STEP_DOWN_MAX);
-  const target=(mid>=prevTarget)? (prevTarget+up):(prevTarget+dn);
-  const coeff=(target>=env)? ATTACK:RELEASE;
-  env = env + (target-env)*coeff;
-  prevTarget=target;
-  const payload={type:'PITCH_NORM', v:env, scale: (1+0.30*env) };
-  try{ kbFrame.contentWindow.postMessage(payload, '*'); }catch(_ ){}
+function reset(){
+  shapes.length=0; const n=20;
+  for(let i=0;i<n;i++){
+    const type=TYPES[i%TYPES.length];
+    const r=60*(0.6+Math.random()*0.7);
+    const x=Math.random()*cv.width, y=Math.random()*cv.height;
+    const rot=Math.random()*Math.PI*2;
+    const vx=(Math.random()-0.5)*0.5, vy=(Math.random()-0.5)*0.5;
+    const color=COLORS[i%COLORS.length];
+    shapes.push({type,x,y,r,rot,vx,vy,color});
+  }
 }
-window.addEventListener('message', (e)=>{ if(e?.data?.type==='AERIAL_PITCH_HZ' && typeof e.data.hz==='number' && e.data.hz>0) applyPitch(e.data.hz); });
+reset();
 
-// KB: robust center-scaling injector (handles arbitrary DOM)
-kbFrame.addEventListener('load', ()=>{ try{ const d=kbFrame.contentDocument;
-  const s=d.createElement('script'); s.type='text/javascript'; s.text=`
-    (function(){
-      // 1) pick a visual target: prefer canvas/video/svg; else largest element
-      function pickTarget(){
-        const c=d.querySelector? d.querySelector('canvas,video,svg') : null;
-        if(c) return c;
-        let best=null, area=0;
-        const els = Array.from(d.body.querySelectorAll('*'));
-        for(const el of els){ const r=el.getBoundingClientRect(); const a=r.width*r.height; if(a>area){ area=a; best=el; } }
-        return best || d.body;
-      }
-      const d=document, target=pickTarget();
-      if(target && target.style){ target.style.transformOrigin='50% 50%'; target.style.willChange='transform'; }
-      // 2) center + scale around viewport center without affecting layout (fixed overlay trick)
-      let applied=false, holder=null;
-      function ensureFixedCenter(){
-        if(applied||!target) return;
-        holder=d.createElement('div'); holder.id='__kb_center_wrap__';
-        Object.assign(holder.style,{ position:'fixed', left:'50%', top:'50%', transform:'translate(-50%,-50%)', width:'100vw', height:'100vh', pointerEvents:'none', zIndex:2 });
-        // move target inside holder clone via CSS containment (without reparenting): use CSS transforms on holder only
-        // Instead of moving DOM, we apply scale on holder and let target be as-is: we create a mirror overlay
-        // Create a clone canvas overlay when target is canvas; otherwise just scale body (fallback)
-        let overlay=null;
-        if(target.tagName==='CANVAS'){ overlay=d.createElement('canvas'); overlay.width=innerWidth*devicePixelRatio; overlay.height=innerHeight*devicePixelRatio; overlay.style.width='100vw'; overlay.style.height='100vh'; holder.appendChild(overlay);
-          const ctx=overlay.getContext('2d'); function draw(){
-            try{ ctx.clearRect(0,0,overlay.width,overlay.height); ctx.drawImage(target,0,0,overlay.width,overlay.height); }catch{}
-            requestAnimationFrame(draw);
-          } requestAnimationFrame(draw);
-        }else{ holder.style.pointerEvents='none'; }
-        d.body.appendChild(holder); applied=true;
-      }
-      ensureFixedCenter();
-      window.addEventListener('message', (e)=>{ if(e?.data?.type==='PITCH_NORM'){ var sc = e.data.scale || (1+0.30*(e.data.v||0)); if(holder) holder.style.transform = 'translate(-50%,-50%) scale('+sc+')'; } });
-    })();
-  `.replace('d=kbFrame.contentDocument','d=document');
-  d.head.appendChild(s);
-}catch(_ ){} });
+function drawShapeStroke(type,r){
+  switch(type){
+    case "circle": ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke(); break;
+    case "triangle": ctx.beginPath(); const h=r*1.1; ctx.moveTo(0,-h); ctx.lineTo(h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.lineTo(-h*Math.sin(Math.PI/3), h*Math.cos(Math.PI/3)); ctx.closePath(); ctx.stroke(); break;
+    case "square": ctx.strokeRect(-r,-r,r*2,r*2); break;
+    case "star": ctx.stroke(getStar(r)); break;
+    case "heart": ctx.stroke(getHeart(r)); break;
+  }
+}
+
+/* ===== Audio Theremin ===== */
+let ac=null, osc=null, gainNode=null, analyser=null, micSrc=null;
+let mode='touch';
+const readHz=document.getElementById('readHz');
+
+async function ensureAudio(){
+  if(ac) return;
+  ac = new (window.AudioContext||window.webkitAudioContext)();
+  osc = ac.createOscillator();
+  gainNode = ac.createGain();
+  osc.type = document.getElementById('wave').value || 'sine';
+  osc.frequency.value = 440;
+  gainNode.gain.value = 0.0;
+  osc.connect(gainNode).connect(ac.destination);
+  analyser = ac.createAnalyser(); analyser.fftSize=2048;
+  gainNode.connect(analyser);
+  osc.start();
+}
+
+function setThereminFromXY(x, y){
+  const fmin = Number(document.getElementById('fmin').value);
+  const fmax = Number(document.getElementById('fmax').value);
+  const hz = fmin * Math.pow(fmax/fmin, x); // log map
+  const vol = 1 - y; // top quiet, bottom loud
+  if(osc){ osc.frequency.setTargetAtTime(hz, ac.currentTime, 0.01); }
+  if(gainNode){ gainNode.gain.setTargetAtTime(vol*0.5, ac.currentTime, 0.02); }
+  incomingPitch(hz);
+}
+
+/* Mic mode (optional) */
+async function startMic(){
+  await ensureAudio();
+  const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+  micSrc = ac.createMediaStreamSource(stream);
+  const tee = ac.createGain(); tee.gain.value=1;
+  micSrc.connect(tee); tee.connect(gainNode); // pass-through so we hear it softly
+  const ana = ac.createAnalyser(); ana.fftSize=2048; tee.connect(ana);
+  const N=2048, buf=new Float32Array(N), sr=ac.sampleRate||48000;
+  (function loop(){
+    ana.getFloatTimeDomainData(buf);
+    // Autocorrelation (simple)
+    let rms=0; for(let i=0;i<N;i++) rms+=buf[i]*buf[i]; rms=Math.sqrt(rms/N);
+    if(rms>0.003){
+      let mean=0; for(let i=0;i<N;i++) mean+=buf[i]; mean/=N; for(let i=0;i<N;i++) buf[i]-=mean;
+      let best=-1, bc=0; for(let off=20; off<N/2; off++){ let c=0; for(let i=0;i<N-off;i++) c+=buf[i]*buf[i+off]; c/=(N-off); if(c>bc){ bc=c; best=off; } }
+      if(best>0){ const hz = sr/best; incomingPitch(hz); }
+    }
+    requestAnimationFrame(loop);
+  })();
+}
+
+/* ===== Pitch → Visual size mapping (smooth both directions) ===== */
+let FMIN=120, FMAX=1800;
+let env=0, prevTarget=0, med=[];
+const readEnv=document.getElementById('readEnv');
+function hz2norm(hz){ const c=Math.max(FMIN, Math.min(FMAX, hz||FMIN)); return (Math.log(c)-Math.log(FMIN))/(Math.log(FMAX)-Math.log(FMIN)); }
+
+function incomingPitch(hz){
+  readHz.textContent = 'hz: ' + hz.toFixed(1);
+  FMIN = Number(document.getElementById('fmin').value);
+  FMAX = Number(document.getElementById('fmax').value);
+  const REL = Number(document.getElementById('rel').value);
+  const n0 = hz2norm(hz);
+  med.push(n0); if(med.length>5) med.shift();
+  const n = [...med].sort((a,b)=>a-b)[Math.floor(med.length/2)];
+  const STEP_UP=0.18, STEP_DOWN=0.16;
+  const up=Math.min(n-prevTarget, STEP_UP), dn=Math.max(n-prevTarget, -STEP_DOWN);
+  const target=(n>=prevTarget)? (prevTarget+up):(prevTarget+dn);
+  const ATTACK=0.75; const RELEASE=REL;
+  env = env + (target - env) * ((target>=env)?ATTACK:RELEASE);
+  prevTarget=target;
+  readEnv.textContent = 'env: ' + env.toFixed(3);
+}
+
+/* ===== Gestures: edge swipe to show; header swipe down or ✕ to hide ===== */
+const panel=document.getElementById('panel'), edge=document.getElementById('edge'), closeBtn=document.getElementById('close');
+function showPanel(){ panel.classList.add('show'); panel.setAttribute('aria-hidden','false'); }
+function hidePanel(){ panel.classList.remove('show'); panel.setAttribute('aria-hidden','true'); }
+
+let eStartY=0, eActive=false;
+edge.addEventListener('touchstart',(e)=>{ if(e.touches.length===1){ eActive=true; eStartY=e.touches[0].clientY; } }, {passive:true});
+edge.addEventListener('touchmove',(e)=>{ if(!eActive)return; const dy=e.touches[0].clientY - eStartY; if(dy<-24){ showPanel(); eActive=false; } }, {passive:true});
+edge.addEventListener('touchend', ()=>{ eActive=false; }, {passive:true});
+
+const grab=document.getElementById('grab'); let gStartY=0, gActive=false;
+grab.addEventListener('touchstart',(e)=>{ if(e.touches.length===1){ gActive=true; gStartY=e.touches[0].clientY; } }, {passive:true});
+grab.addEventListener('touchmove',(e)=>{ if(!gActive)return; const dy=e.touches[0].clientY - gStartY; if(dy>24){ hidePanel(); gActive=false; } }, {passive:true});
+grab.addEventListener('touchend', ()=>{ gActive=false; }, {passive:true});
+closeBtn.addEventListener('click', hidePanel);
+
+/* ===== Touch play area (fullscreen) ===== */
+let touching=false;
+function pos(e){ const t=e.touches?e.touches[0]:e; return {x:t.clientX/innerWidth, y:t.clientY/innerHeight}; }
+addEventListener('touchstart', async (e)=>{
+  if((e.target===edge)||(e.target===grab)||(panel.contains(e.target))) return;
+  touching=true; await ensureAudio(); if(mode==='touch'){ const p=pos(e); setThereminFromXY(p.x, p.y); }
+}, {passive:false});
+addEventListener('touchmove', (e)=>{
+  if(!touching) return;
+  if(mode==='touch'){ const p=pos(e); setThereminFromXY(p.x, p.y); }
+}, {passive:false});
+addEventListener('touchend', ()=>{ touching=false; if(mode==='touch' && gainNode){ gainNode.gain.setTargetAtTime(0, ac.currentTime, 0.02); } }, {passive:true});
+
+/* ===== Controls ===== */
+document.getElementById('mode').addEventListener('change', async (e)=>{
+  mode = e.target.value;
+  if(mode==='mic'){ await startMic(); if(gainNode) gainNode.gain.setTargetAtTime(0.15, ac.currentTime, 0.05); }
+});
+document.getElementById('wave').addEventListener('change',(e)=>{ if(osc) osc.type=e.target.value; });
+
+/* ===== Render loop ===== */
+function loop(){
+  const w=cv.width,h=cv.height;
+  ctx.fillStyle="#0b0c10"; ctx.fillRect(0,0,w,h);
+  const gain = Number(document.getElementById('gain').value || 0.30);
+  for(const s of shapes){
+    s.x+=s.vx; s.y+=s.vy; s.rot+=0.008;
+    if(s.x<s.r){ s.x=s.r; s.vx=Math.abs(s.vx); } if(s.x>w-s.r){ s.x=w-s.r; s.vx=-Math.abs(s.vx); }
+    if(s.y<s.r){ s.y=s.r; s.vy=Math.abs(s.vy); } if(s.y>h-s.r){ s.y=h-s.r; s.vy=-Math.abs(s.vy); }
+    s.vx*=0.992; s.vy*=0.992;
+    const base=s.r, scale=1 + gain*env, r=base*scale;
+    ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.rot);
+    ctx.lineJoin="round"; ctx.lineCap="round";
+    ctx.shadowColor=s.color; ctx.shadowBlur=30; ctx.strokeStyle=s.color; ctx.lineWidth=8; drawShapeStroke(s.type,r);
+    ctx.shadowBlur=12; ctx.strokeStyle="#ffffff"; ctx.lineWidth=3; drawShapeStroke(s.type,r);
+    ctx.restore();
+  }
+  requestAnimationFrame(loop);
+}
+loop();
 </script>
 </body>
 </html>

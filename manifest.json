@@ -1,7 +1,7 @@
 {
-  "name": "KB×AERIAL — android v5",
-  "short_name": "KB×AERIAL",
-  "start_url": "./index.html?v=5",
+  "name": "KB Visual Theremin — edgeSwipe v1",
+  "short_name": "KB Theremin",
+  "start_url": "./index.html?v=1",
   "display": "standalone",
   "background_color": "#0b0c10",
   "theme_color": "#0b0c10",
