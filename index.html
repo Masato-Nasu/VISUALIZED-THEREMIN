@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
 <title>Motion Theremin + Shake Chime + BGM</title>
 <meta name="theme-color" content="#111317">
-<link rel="manifest" href="./manifest.json?v=20251018044151">
+<link rel="manifest" href="./manifest.json?v=20251018044607">
 <style>
   :root {
     --fg: #eaeaea;
@@ -60,7 +60,7 @@
   <button id="startBtn" class="btn">タップして開始（音を解放）</button>
   <button id="permBtn" class="btn small">センサー許可</button>
   <button id="uiToggle" class="btn small">UI表示/非表示</button>
-  <span id="permStatus"></span>
+  <span id="permStatus"></span><span id="sensorStatus" style="margin-left:auto;font-size:12px;color:#9aa0a6">SENS:…</span>
 </div>
 
 <div id="ui">
@@ -268,43 +268,17 @@
   document.getElementById('volBgm').addEventListener('input', e=>{ if(gainBgm) gainBgm.gain.value = Number(e.target.value); });
   document.getElementById('volChime').addEventListener('input', e=>{ if(gainChime) gainChime.gain.value = Number(e.target.value); });
 
-  // ---------- Theremin mapping (smooth) ----------
-  let smooth = { beta: 0, gamma: 0, alpha: 0 };
-  const k = { beta: 0.12, gamma: 0.12, alpha: 0.08 };
+  
+  // ---------- Sensor Watchdog & Fallback ----------
+  const sensorStatus = document.getElementById('sensorStatus');
+  let lastOri = 0, lastMotion = 0;
+  let useAccelFallback = false;
 
-  let lastAlpha = null, alphaOffset = 0;
-  function unwrapAlpha(a){
-    if(lastAlpha==null){ lastAlpha = a; return a; }
-    let da = a - lastAlpha;
-    if(da > 180) alphaOffset -= 360;
-    else if(da < -180) alphaOffset += 360;
-    lastAlpha = a;
-    return a + alphaOffset;
-  }
+  function markOri() { lastOri = performance.now(); sensorStatus.textContent = 'SENS:OK'; }
+  function markMotion() { lastMotion = performance.now(); if (!lastOri) sensorStatus.textContent = 'SENS:ACCEL'; }
 
-  addEventListener('deviceorientation', (ev)=>{
-    const beta = (ev.beta ?? 0);
-    const gamma = (ev.gamma ?? 0);
-    const alpha = unwrapAlpha((ev.alpha ?? 0));
-    smooth.beta = lerp(smooth.beta, beta, k.beta);
-    smooth.gamma = lerp(smooth.gamma, gamma, k.gamma);
-    smooth.alpha = lerp(smooth.alpha, alpha, k.alpha);
-
-    const betaNorm = Math.min(1, Math.max(0, (smooth.beta + 180) / 360));
-    const betaCurve = Math.sin(betaNorm * Math.PI);
-    const freq = 110 + betaCurve * (1200 - 110);
-
-    const gammaNorm = Math.min(1, Math.max(0, (Math.abs(smooth.gamma) / 90)));
-    const vol = Math.pow(gammaNorm, 0.7);
-
-    if(oscTheremin && gainTheremin){
-      try{
-        oscTheremin.frequency.setTargetAtTime(freq, actx.currentTime, 0.02);
-        gainTheremin.gain.setTargetAtTime(vol * Number(document.getElementById('volTheremin').value), actx.currentTime, 0.03);
-      }catch(e){}
-    }
-  }, { passive:true });
-
+  // Common orientation state
+  
   // ---------- Shake detection -> Chime ----------
   let shakeEnergy = 0, lastShakeT = 0;
   const SHAKE_DECAY = 0.98;

@@ -1,14 +1,14 @@
 // sw.js — Motion Theremin PWA — 202510180427
-const SW_VERSION = "theremin-20251018044151";
+const SW_VERSION = "theremin-20251018044607";
 const CACHE = "pwa-cache-" + SW_VERSION;
 
 // 必ず更新させたいアセット
 const ASSETS = [
   "./",
-  "./index.html?v=20251018044151",
-  "./manifest.json?v=20251018044151",
-  "./icon-192.png?v=20251018044151",
-  "./icon-512.png?v=20251018044151"
+  "./index.html?v=20251018044607",
+  "./manifest.json?v=20251018044607",
+  "./icon-192.png?v=20251018044607",
+  "./icon-512.png?v=20251018044607"
 ];
 
 self.addEventListener("install", (e) => {
